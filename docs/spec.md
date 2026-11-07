@@ -140,8 +140,13 @@ internet-cafe/
     main.jsx
     App.jsx                      # routes
     data/options.js              # SHARED: the list of allowed games and hobbies
-    lib/supabase.js              # the only createClient() call
-    lib/api.js                   # every Supabase call goes through here
+    backend-tools/
+      supabase.ts                # the only createClient() call
+      auth.ts                    # signInWithGoogle, signOut
+      profile.ts                 # getMyProfile, saveOnboarding
+      squad.ts                   # getMySquad, formSquad, nextRoute
+      messages.ts                # listMessages, sendMessage, subscribeToMessages
+      index.ts                   # re-exports everything — pages import from here
     hooks/
       useAuth.jsx                # AuthProvider + useAuth()
       useProfile.js
@@ -166,7 +171,7 @@ internet-cafe/
 | `supabase/migrations/` | Backend | Schema and RLS are contracts. Frontend reads them, never edits them |
 | `supabase/functions/` | Backend | Request and response shapes are a contract (see Matchmaking) |
 | `scripts/` | Backend | Uses the service-role key. Never imported by `src/` |
-| `src/lib/api.js` | Frontend | The function list is a contract (see Frontend). Pages never call `supabase` directly |
+| `src/backend-tools/` | Frontend | The function list is a contract (see Frontend). Pages never call `supabase` directly |
 | `src/data/options.js` | Shared | The seed data and the onboarding picker both use these exact values |
 | `src/pages/`, `src/components/`, `src/hooks/` | Frontend | One owner per page, so people can work in parallel |
 | `docs/`, `CLAUDE.md` | Shared | Update the spec first, then the code |
@@ -499,7 +504,7 @@ Seeded users don't reply in v1. The demo uses two real accounts in the same squa
 
 ## Frontend
 
-The frontend is four routes, and every page talks to Supabase only through `src/lib/api.js`. Backend changes then touch one file, and the backend team can check that file against this spec.
+The frontend is four routes, and every page talks to Supabase only through `src/backend-tools/`. Backend changes then touch one directory, and the backend team can check those files against this spec.
 
 **Routes** (`src/App.jsx`, react-router)
 
@@ -513,7 +518,7 @@ The frontend is four routes, and every page talks to Supabase only through `src/
 
 `ProtectedRoute` waits for auth to load, calls `nextRoute()`, and redirects if the current path doesn't match.
 
-**`src/lib/api.js` (contract)**
+**`src/backend-tools/` (contract)**
 
 Every function is `async`. It returns plain data, or throws an `Error` with a `.code` string the page can switch on.
 
