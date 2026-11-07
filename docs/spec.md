@@ -181,7 +181,7 @@ There are six tables, and the split between them is what enforces hidden matchin
 | --- | --- | --- |
 | `profiles` | Display name, age, avatar, seed flag | You and your squadmates |
 | `profile_private` | Games and hobbies | Only you |
-| `squads` | One row per squad | Its members |
+| `squads` | One row per squad, plus the games every non-wildcard member shares | Its members |
 | `squad_members` | Who is in which squad (one squad per user in v1) | Members of that squad |
 | `match_meta` | Match score and wildcard flag per member | Nobody except the server |
 | `messages` | Squad chat | Members of that squad |
@@ -208,8 +208,9 @@ create table public.profile_private (
 );
 
 create table public.squads (
-  id         uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now()
+  id           uuid primary key default gen_random_uuid(),
+  common_games text[] not null default '{}', -- games shared by every non-wildcard member
+  created_at   timestamptz not null default now()
 );
 
 create table public.squad_members (
@@ -383,13 +384,16 @@ The response never includes scores, wildcard flags, or anyone's games or hobbies
 
 1. Turn each user into a set of tags, with games prefixed `g:` and hobbies `h:`, so a game and a hobby with the same name don't count as a match.
 2. Score = shared tags ÷ all distinct tags across both users. 0 means nothing in common, 1 means identical. If both sets are empty, the score is 0.
-3. Score every person in the pool against the user who called the function.
-4. Squad size is the caller plus up to 4 others. Take the top 3 by score (ties go to whoever signed up first), then 1 wildcard: the lowest score among the people left.
-5. If fewer than 4 others are available, take everyone available, and only add a wildcard once there are at least 3 others. If fewer than 2 others are available, return `not_enough_people`.
+3. **Filter the pool to only candidates who share at least one game with the caller.** This applies to every member including the wildcard. If fewer than 2 pass the filter, return `not_enough_people`.
+4. Score every person in the filtered pool against the caller.
+5. Squad size is the caller plus up to 4 others. Take the top 3 by score (ties go to whoever signed up first), then 1 wildcard: the lowest score among the people left.
+6. If fewer than 4 others are available in the filtered pool, take everyone available, and only add a wildcard once there are at least 3 others.
+7. Compute `commonGames`: the intersection of `games` arrays across every member (caller + all picks including wildcard). This is the game the whole squad has in common and is shown on the Squad page.
 
 ```ts
 export type Candidate = { id: string; games: string[]; hobbies: string[]; createdAt: string };
 export type Pick = { id: string; score: number; isWildcard: boolean };
+export type SquadResult = { picks: Pick[]; commonGames: string[] };
 
 const tags = (c: Candidate) =>
   new Set([...c.games.map((g) => `g:${g}`), ...c.hobbies.map((h) => `h:${h}`)]);
@@ -401,20 +405,33 @@ export function jaccard(a: Candidate, b: Candidate): number {
   return union === 0 ? 0 : shared / union;
 }
 
-export function buildSquad(caller: Candidate, pool: Candidate[], maxOthers = 4): Pick[] | null {
-  if (pool.length < 2) return null;
-  const scored = pool
+export function sharesGame(a: Candidate, b: Candidate): boolean {
+  return a.games.some((g) => b.games.includes(g));
+}
+
+export function buildSquad(caller: Candidate, pool: Candidate[], maxOthers = 4): SquadResult | null {
+  // Every member (including wildcard) must share at least one game with the caller
+  const eligible = pool.filter((c) => sharesGame(caller, c));
+  if (eligible.length < 2) return null;
+  const scored = eligible
     .map((c) => ({ c, score: jaccard(caller, c) }))
     .sort((x, y) => y.score - x.score || x.c.createdAt.localeCompare(y.c.createdAt));
   const others = Math.min(maxOthers, scored.length);
   const wildcards = others >= 3 ? 1 : 0;
   const close = scored.slice(0, others - wildcards);
   const wild = wildcards ? [scored[scored.length - 1]] : [];
-  return [
+  const picks: Pick[] = [
     { id: caller.id, score: 1, isWildcard: false },
     ...close.map(({ c, score }) => ({ id: c.id, score, isWildcard: false })),
     ...wild.map(({ c, score }) => ({ id: c.id, score, isWildcard: true })),
   ];
+  // Games every member of the squad plays
+  const allMembers = [caller, ...close.map(({ c }) => c), ...wild.map(({ c }) => c)];
+  const commonGames = allMembers.reduce<string[]>(
+    (acc, m) => acc.filter((g) => m.games.includes(g)),
+    caller.games,
+  );
+  return { picks, commonGames };
 }
 ```
 
@@ -427,7 +444,7 @@ export function buildSquad(caller: Candidate, pool: Candidate[], maxOthers = 4):
 5. Load the caller's `profile_private` row. If there isn't one, return 400.
 6. Load the pool: every `profile_private` row joined to `profiles.created_at`, minus the caller, minus anyone already in `squad_members`. Filtering in TypeScript is fine at this scale.
 7. Run `buildSquad`. If it returns `null`, return 409.
-8. Insert one `squads` row. Insert all `squad_members` rows **in one insert call**, then all `match_meta` rows.
+8. Insert one `squads` row with `common_games` set to the result. Insert all `squad_members` rows **in one insert call**, then all `match_meta` rows.
 9. If the member insert fails with a unique violation (`23505`, someone else grabbed a person first), delete the new squad and retry from step 6, at most twice.
 10. Return `{ squad_id, already_in_squad: false }`.
 
@@ -491,7 +508,7 @@ The frontend is four routes, and every page talks to Supabase only through `src/
 | `/` | `Landing.jsx` | Public. Signed-in users are redirected by `nextRoute()` | Pitch line + "Continue with Google" |
 | `/onboarding` | `Onboarding.jsx` | Session, no profile | The onboarding form |
 | `/find` | `FindSquad.jsx` | Profile, no squad | "Find my squad" button, loading state, friendly `not_enough_people` message |
-| `/squad` | `Squad.jsx` | In a squad | Member cards (name + avatar only) and the chat |
+| `/squad` | `Squad.jsx` | In a squad | Member cards (name + avatar only), the shared game(s), and the chat |
 | `*` | — | — | Redirect to `/` |
 
 `ProtectedRoute` waits for auth to load, calls `nextRoute()`, and redirects if the current path doesn't match.
@@ -506,7 +523,7 @@ Every function is `async`. It returns plain data, or throws an `Error` with a `.
 | `signOut()` | nothing | — |
 | `getMyProfile()` | `{ id, display_name, age, avatar_url }` or `null` | — |
 | `saveOnboarding({ display_name, age, games, hobbies })` | nothing | `under_18`, `invalid` |
-| `getMySquad()` | `{ squad_id, members: [{ id, display_name, avatar_url }] }` or `null` | — |
+| `getMySquad()` | `{ squad_id, common_games: string[], members: [{ id, display_name, avatar_url }] }` or `null` | — |
 | `formSquad()` | `{ squad_id, already_in_squad }` | `not_signed_in`, `onboarding_incomplete`, `not_enough_people`, `internal` |
 | `nextRoute()` | `'/'`, `'/onboarding'`, `'/find'` or `'/squad'` | — |
 | `listMessages(squadId)` | `Message[]` | — |
@@ -517,7 +534,7 @@ Every function is `async`. It returns plain data, or throws an `Error` with a `.
 
 Implementation notes:
 
-- `getMySquad()`: first read your own `squad_members` row to get `squad_id`. Then run `supabase.from('squad_members').select('user_id, profiles(id, display_name, avatar_url)').eq('squad_id', squadId)`.
+- `getMySquad()`: first read your own `squad_members` row to get `squad_id`. Then fetch `squads` to get `common_games`. Then run `supabase.from('squad_members').select('user_id, profiles(id, display_name, avatar_url)').eq('squad_id', squadId)`.
 - `formSquad()`: on a non-2xx response, `supabase.functions.invoke` returns an `error` whose `error.context` is the `Response`. Read the code with `await error.context.json()`.
 - Never query `profile_private` for anyone but yourself, and never query `match_meta`.
 
