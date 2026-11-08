@@ -1,4 +1,10 @@
+import { useAuth } from "../hooks/useAuth.tsx";
+import { signOut } from "../backend-tools/auth.ts";
+import GoogleSignInButton from "./GoogleSignInButton.tsx";
+
 function Header() {
+  const { user, loading } = useAuth();
+
   return (
     <header className="flex items-center justify-between bg-navy px-8 py-4 text-white">
       <a href="/" className="text-3xl">
@@ -9,9 +15,16 @@ function Header() {
         <a href="/" className="transition-colors hover:text-pink ">
           home
         </a>
-        <a href="/login" className="transition-colors hover:text-pink">
-          log in
-        </a>
+        {/* Hidden while auth loads too, so signed-in users never see it flash */}
+        {!loading && !user && (
+          <GoogleSignInButton />
+        )}
+        {/* AuthProvider hears the sign-out and flips back to the signed-out nav */}
+        {!loading && user && (
+          <button onClick={signOut} className="transition-colors hover:text-pink">
+            sign out
+          </button>
+        )}
       </nav>
     </header>
   );

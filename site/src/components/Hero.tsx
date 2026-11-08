@@ -1,6 +1,9 @@
-import { signInWithGoogle } from "../backend-tools/auth.ts";
+import GoogleSignInButton from "./GoogleSignInButton.tsx";
+import { useAuth } from "../hooks/useAuth.tsx";
 
 function Hero() {
+  const { user, loading } = useAuth();
+
   return (
     <section
       className="relative flex min-h-screen items-center overflow-hidden bg-cover bg-center px-8 md:px-20"
@@ -22,21 +25,12 @@ function Hero() {
           explore hobbies, and find your forever 5-stack.
         </p>
 
-        <div className="flex flex-wrap gap-4 text-2xl">
-          <button
-            onClick={signInWithGoogle}
-            className="rounded-lg bg-pink px-8 py-2 text-white transition hover:scale-105 ease-in-out hover:brightness-110"
-          >
-            log in
-          </button>
-
-          <button
-            onClick={signInWithGoogle}
-            className="rounded-lg bg-pink px-8 py-2 text-white transition hover:scale-105 ease-in-out hover:brightness-110"
-          >
-            sign up
-          </button>
-        </div>
+        {/* Signed-in users don't need these; hidden while auth loads to avoid a flash */}
+        {!loading && !user && (
+          <div className="flex flex-wrap gap-4 text-2xl">
+            <GoogleSignInButton />
+          </div>
+        )}
       </div>
     </section>
   );
