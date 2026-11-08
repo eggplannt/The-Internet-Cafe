@@ -6,80 +6,13 @@ import Footer from '../components/Footer.tsx';
 import { PageLoading, Spinner } from '../components/Spinner.tsx';
 import { useAuth } from '../hooks/useAuth.tsx';
 import { joinQueue, saveOnboarding, signOut } from '../backend-tools';
-import { GAMES, HOBBIES, type Option } from '../data/options.ts';
-import { AVATARS, type AvatarOption } from '../data/avatars.ts';
-
-// A row of toggle buttons. aria-pressed tells screen readers which ones are picked.
-function TagPicker({ label, options, picked, onToggle }: {
-  label: string;
-  options: Option[];
-  picked: string[];
-  onToggle: (value: string) => void;
-}) {
-  return (
-    <fieldset>
-      <legend className="mb-2 text-3xl">{label}</legend>
-      <div className="flex flex-wrap gap-3">
-        {options.map((o) => {
-          const on = picked.includes(o.value);
-          return (
-            <button
-              key={o.value}
-              type="button"
-              aria-pressed={on}
-              onClick={() => onToggle(o.value)}
-              className={`rounded-lg border-2 border-pink px-4 py-1 text-xl transition focus-visible:outline-2 focus-visible:outline-white ${
-                on ? 'bg-pink text-white' : 'text-white hover:bg-pink/20'
-              }`}
-            >
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
-    </fieldset>
-  );
-}
-
-// Pick one profile picture. Real radio buttons (visually hidden) so arrow keys and
-// screen readers work for free; the picture itself is the clickable label.
-function AvatarPicker({ options, picked, onPick }: {
-  options: AvatarOption[];
-  picked: string;
-  onPick: (value: string) => void;
-}) {
-  return (
-    <fieldset>
-      <legend className="mb-2 text-3xl">profile picture</legend>
-      <div className="flex flex-wrap gap-4">
-        {options.map((o) => (
-          <label
-            key={o.value}
-            className="cursor-pointer rounded-full border-4 border-transparent transition hover:scale-105 has-checked:border-pink has-focus-visible:outline-2 has-focus-visible:outline-white"
-          >
-            <input
-              type="radio"
-              name="avatar"
-              value={o.value}
-              checked={picked === o.value}
-              onChange={() => onPick(o.value)}
-              className="sr-only"
-            />
-            <img
-              src={o.src}
-              alt={o.label}
-              // Small pixel art: keep it crisp instead of blurry when scaled up
-              className="h-20 w-20 rounded-full object-cover [image-rendering:pixelated]"
-            />
-          </label>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
+import { GAMES, HOBBIES } from '../data/options.ts';
+import { AVATARS } from '../data/avatars.ts';
+import TagPicker from '../components/TagPicker.tsx';
+import AvatarPicker from '../components/AvatarPicker.tsx';
 
 // Adds the value if it's missing, removes it if it's there
-const toggle = (list: string[], value: string) =>
+const toggleValue = (list: string[], value: string) =>
   list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
 // The form itself. Only mounted once we know who the user is, so the name can be prefilled.
@@ -162,10 +95,10 @@ function OnboardingForm({ user, onUnderAge }: { user: User; onUnderAge: () => vo
           />
         </label>
 
-        <AvatarPicker options={AVATARS} picked={avatar} onPick={setAvatar} />
+        <AvatarPicker picked={avatar} onPick={setAvatar} />
 
-        <TagPicker label="games" options={GAMES} picked={games} onToggle={(v) => setGames(toggle(games, v))} />
-        <TagPicker label="hobbies" options={HOBBIES} picked={hobbies} onToggle={(v) => setHobbies(toggle(hobbies, v))} />
+        <TagPicker label="games" options={GAMES} picked={games} onToggle={(v) => setGames(toggleValue(games, v))} />
+        <TagPicker label="hobbies" options={HOBBIES} picked={hobbies} onToggle={(v) => setHobbies(toggleValue(hobbies, v))} />
 
         {error && <p role="alert" className="text-2xl text-pink">{error}</p>}
 

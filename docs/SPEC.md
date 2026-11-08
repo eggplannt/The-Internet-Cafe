@@ -181,7 +181,8 @@ internet-cafe/
       components/
         ProtectedRoute.tsx
         Avatar.tsx
-        TagPicker.tsx
+        TagPicker.tsx                # shared by onboarding and edit profile
+        AvatarPicker.tsx             # coffee-cup picker, shared by onboarding and edit profile
         MemberCard.tsx
         MessageList.tsx
         MessageInput.tsx
@@ -604,7 +605,7 @@ The frontend is six routes, and every page talks to Supabase only through `site/
 | `/find` | `FindSquad.tsx` | Profile, not in a squad or the queue | Usually skipped: submitting onboarding already calls `joinQueue()` once. A "Find my squad" button here (calls `joinQueue()`) is the way back in after "Leave queue". On `matched` go to `/squad`, on `waiting` go to `/waiting` |
 | `/waiting` | `Waiting.tsx` | In the queue | "Looking for your squad…", how long you've waited, and a "Leave queue" button (`leaveQueue()`, then `/find`). Reads `getQueueStatus()` on open (never `joinQueue()`), and listens with `subscribeToMatch()` to move to `/squad` the moment a squad forms |
 | `/squad` | `squad.tsx` | Session | The chat rooms. With no squad yet it just says "not currently in a squad". A sidebar on the left lists every squad you're in (named after its shared game(s), with a member count); the open one is in the URL as `?squad=<id>` and defaults to the first. The open squad's members (name + avatar only) sit in one row across the top, then its shared game(s), then the chat. On phones the sidebar stacks above. Linked as "chat rooms" in the nav whenever you're signed in. Unread dots (one per squad in the sidebar, one on the nav link for all of them) mean a squad you've never opened, or a message from someone else since you last had it open. "Last opened" is kept per device in `localStorage` (`squad-seen:<squad_id>`), so no table is needed. The first time you open a squad's chat in a browser session, a dismissible banner says "there's likely someone here with a similar or the same hobby as you. say hi!" (once per squad, kept in `sessionStorage` as `chat-banner-seen:<squad_id>`; it never says who). The home banner says nothing once you're matched; the nav link replaces it. v1 still allows one squad per user (unique index on `squad_members`), so the list has at most one entry for now, but the page is built for many |
-| `/account` | `account.tsx` | Session (no profile → `/onboarding`) | Your avatar, name, age, email, and your own games and hobbies (from `getMyInterests()`), plus sign out. Linked as "account" in the nav when signed in |
+| `/account` | `account.tsx` | Session (no profile → `/onboarding`) | Your avatar, name, age, email, and your own games and hobbies (from `getMyInterests()`), plus sign out. "Edit profile" opens the same fields as onboarding (name, age 18+, cup avatar, games, hobbies), prefilled, and saves with `saveOnboarding()` (it upserts, so it works for edits). Email comes from Google and isn't editable. New games or hobbies only affect future matching; existing squads and their `common_games` stay as they are. Linked as "account" in the nav when signed in |
 | `*` | — | — | Redirect to `/` |
 
 `ProtectedRoute` waits for auth to load, calls `nextRoute()`, and redirects if the current path doesn't match.
