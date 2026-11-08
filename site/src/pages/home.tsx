@@ -11,7 +11,7 @@ function statusText(state: AutoJoinState): string | null {
     case 'needs_onboarding':
       return 'finish your profile so we can find your squad.';
     case 'waiting':
-      return 'looking for your squad… we\'ll match you as soon as enough people who share your games are around.';
+      return 'looking for your squad… we\'ll match you as soon as we can!';
     case 'matched':
       return 'your squad is ready!';
     case 'error':

@@ -7,8 +7,15 @@ function Header() {
 
   return (
     <header className="flex items-center justify-between bg-navy px-8 py-4 text-white">
-      <a href="/" className="text-3xl">
-        The <span className="text-pink">Internet</span> Café
+      <a href="/" className="flex items-center gap-3 text-3xl">
+        <img
+          src="/flavicon.svg"
+          alt="The Internet Café logo"
+          className="h-10 w-10 object-contain"
+        />
+        <span>
+          The <span className="text-pink">Internet</span> Café
+        </span>
       </a>
 
       <nav className="flex items-center gap-8 text-2xl">
