@@ -6,8 +6,9 @@ export type SquadResult = { picks: Pick[]; commonGames: string[] };
 // puts two real devices together and seeds are only ever filler.
 export const MIN_REAL_MEMBERS = 2;
 
-const tags = (c: Candidate) =>
-  new Set([...c.games.map((g) => `g:${g}`), ...c.hobbies.map((h) => `h:${h}`)]);
+// Scores are hobbies only: games already decide who can be in a squad together
+// (everyone must share one), so hobbies decide who fits best among them.
+const tags = (c: Candidate) => new Set(c.hobbies);
 
 export function jaccard(a: Candidate, b: Candidate): number {
   const A = tags(a), B = tags(b);

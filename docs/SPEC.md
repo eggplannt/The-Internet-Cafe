@@ -430,8 +430,8 @@ Leaving the queue is a plain delete of your own `match_queue` row, which RLS all
 
 **Algorithm** (`supabase/functions/_shared/matching.ts`: pure functions, no database calls, so it's easy to test and explain)
 
-1. Turn each user into a set of tags, with games prefixed `g:` and hobbies `h:`, so a game and a hobby with the same name don't count as a match.
-2. Score = shared tags ÷ all distinct tags across both users. 0 means nothing in common, 1 means identical. If both sets are empty, the score is 0.
+1. **The score is hobbies only.** Games don't count toward it; they're the hard filter in step 3 (everyone must share a game), so the score decides who fits best among people who already play together.
+2. Score = shared hobbies ÷ all distinct hobbies across both users (Jaccard). 0 means no hobbies in common, 1 means identical hobbies. If both sets are empty, the score is 0.
 3. **Every member, wildcard included, must share at least one game with the whole squad.** `commonGames` starts as the anchor's games. Someone is only added if they play at least one game still in `commonGames`, and adding them narrows `commonGames` to the games they also play. So `commonGames` is never empty, and every member sees the same game(s) on the Squad page.
 4. Score everyone in the pool who shares a game with the anchor. Sort real people ahead of seeds; within each group, highest score first (ties go to whoever signed up first).
 5. Squad size is the anchor plus up to 4 others. Walk down the sorted list and take up to 3 close matches, skipping anyone who would leave `commonGames` empty.
@@ -455,8 +455,9 @@ export type SquadResult = { picks: Pick[]; commonGames: string[] };
 // puts two real devices together and seeds are only ever filler.
 export const MIN_REAL_MEMBERS = 2;
 
-const tags = (c: Candidate) =>
-  new Set([...c.games.map((g) => `g:${g}`), ...c.hobbies.map((h) => `h:${h}`)]);
+// Scores are hobbies only: games already decide who can be in a squad together
+// (everyone must share one), so hobbies decide who fits best among them.
+const tags = (c: Candidate) => new Set(c.hobbies);
 
 export function jaccard(a: Candidate, b: Candidate): number {
   const A = tags(a), B = tags(b);
