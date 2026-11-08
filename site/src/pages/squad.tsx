@@ -3,6 +3,7 @@ import Header from '../components/Header.tsx';
 import Footer from '../components/Footer.tsx';
 import Avatar from '../components/Avatar.tsx';
 import ChatPanel from '../components/ChatPanel.tsx';
+import OneTimeBanner from '../components/OneTimeBanner.tsx';
 import { PageLoading, Spinner } from '../components/Spinner.tsx';
 import { useAuth } from '../hooks/useAuth.tsx';
 import { useMySquads } from '../hooks/useMySquads.ts';
@@ -81,6 +82,12 @@ function ChatRooms({ myId }: { myId: string }) {
         <p className="text-2xl">
           you all play: <span className="text-pink">{squadName(open)}</span>
         </p>
+
+        {/* key: each squad gets its own "first time opening this chat" check */}
+        {/* A general hint only: we never say who shares what, other people's hobbies stay private */}
+        <OneTimeBanner key={open.squad_id} storageKey={`chat-banner-seen:${open.squad_id}`}>
+          there's likely someone here with a similar or the same hobby as you. say hi!
+        </OneTimeBanner>
 
         <div className="h-[60vh]">
           {/* key: a fresh chat (history + subscription) for each squad */}
