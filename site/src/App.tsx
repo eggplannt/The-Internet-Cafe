@@ -1,7 +1,15 @@
+import Header from './components/Header';
+import Hero from './components/Hero';
+
 function App() {
-  return <div className="flex h-screen items-center justify-center">
-    <div>Hello World</div>
-  </div>
+  return (
+    <div className="min-h-screen bg-navy">
+      <Header />
+      <main>
+        <Hero />
+      </main>
+    </div>
+  );
 }
 
-export default App
+export default App;

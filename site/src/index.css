@@ -1,1 +1,14 @@
 @import "tailwindcss";
+
+@theme {
+  --color-navy: #151e3f;
+  --color-white: #f2f3d9;
+  --color-pink: #fa249a;
+
+  --font-sans: "Jersey 10", sans-serif;
+}
+
+body {
+  font-family: "Jersey 10", sans-serif;
+  @apply bg-navy text-white;
+}
