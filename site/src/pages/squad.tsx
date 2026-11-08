@@ -69,8 +69,9 @@ function ChatRooms({ myId }: { myId: string }) {
       </nav>
 
       <section aria-label={`${squadName(open)} squad`} className="flex min-w-0 flex-1 flex-col gap-4">
-        {/* Everyone in the open squad, in one row (scrolls sideways if it doesn't fit) */}
-        <ul className="flex gap-4 overflow-x-auto scrollbar-none pb-2">
+        {/* Everyone in the open squad, in one row. Scrolls sideways if it doesn't fit, with a
+            thin pink scrollbar always shown so it's clear there are more people to see */}
+        <ul className="flex gap-4 overflow-x-scroll pb-3 scrollbar-thin scrollbar-thumb-pink scrollbar-track-white/10">
           {open.members.map((m) => (
             <li key={m.id} className="flex shrink-0 items-center gap-3 rounded-lg bg-white/10 px-4 py-2 text-2xl">
               <Avatar name={m.display_name} url={m.avatar_url} />
@@ -104,7 +105,9 @@ function SquadPage() {
   if (!user) return <Navigate to="/" replace />;
 
   return (
-    <div className="flex min-h-screen flex-col bg-navy">
+    <div
+      className="flex min-h-screen flex-col bg-navy bg-cover bg-center"
+      style={{ backgroundImage: "url('/chat_bg.png')" }}>
       <Header />
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-8 py-12">
         <ChatRooms myId={user.id} />

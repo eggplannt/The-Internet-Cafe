@@ -217,7 +217,10 @@ function Account() {
   if (!user) return <Navigate to="/" replace />;
 
   return (
-    <div className="flex min-h-screen flex-col bg-navy">
+    <div
+      className="flex min-h-screen flex-col bg-navy bg-cover bg-center"
+      style={{ backgroundImage: "url('/profile_bg.png')" }}
+      >
       <Header />
       <main className="mx-auto w-full max-w-3xl flex-1 px-8 py-12">
         <AccountDetails email={user.email} />

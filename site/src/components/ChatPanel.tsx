@@ -49,7 +49,7 @@ export default function ChatPanel({
   };
 
   return (
-    <section className="flex flex-col h-full bg-navy text-white">
+    <section className="flex flex-col h-full bg-navy/80 text-white">
       <div
         ref={listRef}
         className="flex-1 scrollbar-thumb-pink-500 overflow-y-auto p-4 space-y-3"
@@ -110,7 +110,7 @@ export default function ChatPanel({
             onKeyDown={handleKeyDown}
             rows={2}
             className="flex-1 resize-none bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xl text-white focus:outline-none focus:ring-2 focus:ring-pink"
-            placeholder="Type a message, and get to know your new frends..."
+            placeholder="Type a message, and get to know your new friends..."
           ></textarea>
           <button
             type="submit"
