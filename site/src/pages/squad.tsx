@@ -55,7 +55,7 @@ function ChatRooms({ myId }: { myId: string }) {
                 >
                   <span>
                     {squadName(s)}
-                    <span className="block text-lg opacity-80">{s.members.length} people</span>
+                    <span className="block text-lg opacity-80 overflow-y-auto scrollbar-none">{s.members.length} people</span>
                   </span>
                   {unread.has(s.squad_id) && (
                     <span className="h-3 w-3 shrink-0 rounded-full bg-pink ring-2 ring-white">
@@ -71,7 +71,7 @@ function ChatRooms({ myId }: { myId: string }) {
 
       <section aria-label={`${squadName(open)} squad`} className="flex min-w-0 flex-1 flex-col gap-4">
         {/* Everyone in the open squad, in one row (scrolls sideways if it doesn't fit) */}
-        <ul className="flex gap-4 overflow-x-auto pb-2">
+        <ul className="flex gap-4 overflow-x-auto scrollbar-none pb-2">
           {open.members.map((m) => (
             <li key={m.id} className="flex shrink-0 items-center gap-3 rounded-lg bg-white/10 px-4 py-2 text-2xl">
               <Avatar name={m.display_name} url={m.avatar_url} />
@@ -89,7 +89,7 @@ function ChatRooms({ myId }: { myId: string }) {
           there's likely someone here with a similar or the same hobby as you. say hi!
         </OneTimeBanner>
 
-        <div className="h-[60vh]">
+        <div className="h-[60vh] overflow-y-auto scrollbar-none">
           {/* key: a fresh chat (history + subscription) for each squad */}
           <ChatPanel key={open.squad_id} squadId={open.squad_id} myId={myId} members={open.members} />
         </div>

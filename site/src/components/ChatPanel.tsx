@@ -52,7 +52,7 @@ export default function ChatPanel({
     <section className="flex flex-col h-full bg-navy text-white">
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto p-4 space-y-3"
+        className="flex-1 scrollbar-thumb-pink-500 overflow-y-auto p-4 space-y-3"
         role="log"
         aria-live="polite"
       >
