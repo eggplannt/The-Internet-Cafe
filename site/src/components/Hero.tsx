@@ -23,14 +23,14 @@ function Hero() {
         <div className="flex flex-wrap gap-4 text-2xl">
           <a
             href="/login"
-            className="rounded-lg bg-pink px-8 py-2 text-white transition hover:scale-500 hover:brightness-110"
+            className="rounded-lg bg-pink px-8 py-2 text-white transition hover:scale-105 ease-in-out hover:brightness-110"
           >
             log in
           </a>
 
           <a
             href="/signup"
-            className="rounded-lg bg-pink px-8 py-2 text-white transition hover:scale-500 hover:brightness-110"
+            className="rounded-lg bg-pink px-8 py-2 text-white transition hover:scale-105 ease-in-out hover:brightness-110"
           >
             sign up
           </a>
