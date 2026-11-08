@@ -1,9 +1,13 @@
 import { supabase } from './supabase';
 
+// kind 'system' = a conversation starter posted by the server: no sender, and meta.answer
+// holds a riddle's answer. Clients can only ever send 'user' messages.
 export type Message = {
   id: number;
   squad_id: string;
-  sender_id: string;
+  sender_id: string | null;
+  kind: 'user' | 'system';
+  meta: { answer?: string } | null;
   body: string;
   created_at: string;
 };
@@ -12,7 +16,7 @@ export type Message = {
 export async function listMessages(squadId: string): Promise<Message[]> {
   const { data, error } = await supabase
     .from('messages')
-    .select('id, squad_id, sender_id, body, created_at')
+    .select('id, squad_id, sender_id, kind, meta, body, created_at')
     .eq('squad_id', squadId)
     .order('created_at', { ascending: true })
     .limit(200);

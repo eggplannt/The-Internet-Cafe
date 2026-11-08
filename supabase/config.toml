@@ -416,3 +416,7 @@ enabled = true
 # Called by pg_cron, not by signed-in users. It checks x-matcher-secret itself.
 [functions.run-matcher]
 verify_jwt = false
+
+# Called by pg_cron, not by signed-in users. It checks x-matcher-secret itself.
+[functions.post-starters]
+verify_jwt = false

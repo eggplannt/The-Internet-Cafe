@@ -32,7 +32,7 @@ The last rule matters for Devpost. Undisclosed AI use, or a teammate who can't e
 
 ## Scope
 
-v1 is four real features: Google sign-in, onboarding, matchmaking into a squad, and live squad chat. Everything else waits until those four work on the deployed URL.
+v1 is four real features: Google sign-in, onboarding, matchmaking into a squad, and live squad chat, plus conversation starters in that chat. Everything else waits until those work on the deployed URL.
 
 | Feature | v1 | What "done" means |
 | --- | --- | --- |
@@ -41,6 +41,7 @@ v1 is four real features: Google sign-in, onboarding, matchmaking into a squad, 
 | Matchmaking | In | "Find my squad" puts you in a queue. The real Jaccard matcher forms a squad of 3–5 with 1 hidden wildcard and at least 2 real (non-seed) people as soon as enough compatible people are waiting |
 | Squad page | In | Shows members' names and avatars, plus the game the whole squad has in common. Never anyone's full games or hobbies |
 | Squad chat | In | Two real accounts in one squad see each other's messages live |
+| Conversation starters | In | A new squad's chat opens with a "System" question or riddle everyone can answer, which quietly gives one member's hobby an opening. Quiet chats get a new one. Never names anyone or their hobby (see Chat) |
 | Seeded pool | In | \~40 seeded users so matching has people to match against |
 | Twin hunt | Later | — |
 | Surprise rewards | Later | — |
@@ -53,7 +54,7 @@ Adding a later feature means a new migration plus new pages. Nothing in v1 needs
 
 ## Architecture
 
-The React app talks straight to Supabase with the public publishable key, and row-level security decides what each user can read or write. The one exception is matchmaking. It runs in a server-side Edge Function, because it has to read everyone's private interests.
+The React app talks straight to Supabase with the public publishable key, and row-level security decides what each user can read or write. The exceptions are matchmaking and conversation starters. They run in server-side Edge Functions, because they have to read everyone's private interests.
 
 &#91;embedded content: v1 architecture · React app, Supabase, Google\]
 
@@ -63,6 +64,7 @@ In text, for anyone reading the Markdown export:
 2. **Onboarding:** the browser writes its own `profiles` and `profile_private` rows directly. RLS allows only your own rows.
 3. **Matchmaking:** the browser invokes the `join-queue` Edge Function, which adds the user to `match_queue` and runs a matching pass right away. `pg_cron` also calls `run-matcher` every 5 minutes for anyone still waiting. Both read everyone's private interests with the service-role key, write `squads`, `squad_members` and `match_meta`, and only ever return a status and a `squad_id`. The waiting page hears its match over Realtime.
 4. **Chat:** the browser inserts into `messages`. Postgres streams each insert through Realtime to every subscribed squad member, filtered by RLS.
+5. **Conversation starters:** when the matcher forms a squad it posts a "System" message in the background (`EdgeRuntime.waitUntil`). `pg_cron` also calls `post-starters` every 30 minutes for quiet squads. Both send the LLM (Groq) only numbered members' hobbies and the squad's shared games, then insert the message with the service-role key, so it arrives over Realtime like any other.
 
 | Layer | Choice |
 | --- | --- |
@@ -70,7 +72,8 @@ In text, for anyone reading the Markdown export:
 | Hosting | Vercel, deploying from `main` |
 | Auth | Supabase Auth, Google provider |
 | Database | Supabase Postgres with RLS on every table |
-| Server logic | Two Supabase Edge Functions (Deno, TypeScript): `join-queue` (called by the browser) and `run-matcher` (called by `pg_cron` every 5 minutes) |
+| Server logic | Three Supabase Edge Functions (Deno, TypeScript): `join-queue` (called by the browser), `run-matcher` (called by `pg_cron` every 5 minutes) and `post-starters` (called by `pg_cron` every 30 minutes) |
+| LLM | `openai/gpt-oss-120b` on Groq's free plan, one `fetch` from Edge Functions only (no SDK). Optional: if it's down or slow, a hand-written bank of starters is used |
 | Realtime | Supabase Realtime `postgres_changes` on `messages` |
 
 ## Setup
@@ -88,7 +91,8 @@ One backend person owns the Supabase project and the Google OAuth client, and sh
    select vault.create_secret('<random secret>', 'matcher_secret');
    ```
    then `npx supabase secrets set MATCHER_SECRET=<random secret>`.
-5. Deploy the functions: `npx supabase functions deploy join-queue` and `npx supabase functions deploy run-matcher --no-verify-jwt`. `run-matcher` is called by `pg_cron`, not by users, so it checks the `x-matcher-secret` header instead of a user token.
+5. Deploy the functions: `npx supabase functions deploy join-queue`, `npx supabase functions deploy run-matcher --no-verify-jwt` and `npx supabase functions deploy post-starters --no-verify-jwt`. `run-matcher` and `post-starters` are called by `pg_cron`, not by users, so they check the `x-matcher-secret` header (the same `MATCHER_SECRET`) instead of a user token.
+6. Give the starter functions a Groq key (free at console.groq.com, never commit it): `npx supabase secrets set GROQ_API_KEY=<key>`. Without it, starters still post, from the hand-written bank.
 
 **Google sign-in**
 
@@ -107,7 +111,7 @@ One backend person owns the Supabase project and the Google OAuth client, and sh
 | `SUPABASE_URL` | Your shell, only when running scripts | `scripts/seed.mjs`, `scripts/reset-squads.mjs` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Your shell, only when running scripts | Scripts. Never in `site/src/`, never committed |
 
-Edge Functions get `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` automatically, so nothing needs setting there apart from `MATCHER_SECRET` (`SUPABASE_ANON_KEY` there is Supabase's own name; the frontend uses the publishable key). Commit `site/.env.example` with empty values, and add `.env.local` to `.gitignore`. Run the scripts from the repo root after `npm install`: `npm run seed`, `npm run reset-squads`.
+Edge Functions get `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` automatically, so nothing needs setting there apart from `MATCHER_SECRET` and `GROQ_API_KEY` (`SUPABASE_ANON_KEY` there is Supabase's own name; the frontend uses the publishable key). Commit `site/.env.example` with empty values, and add `.env.local` to `.gitignore`. Run the scripts from the repo root after `npm install`: `npm run seed`, `npm run reset-squads`.
 
 **Deploy**
 
@@ -134,12 +138,20 @@ internet-cafe/
       20261107000003_grants.sql  # table privileges (least needed per role)
       20261107000004_queue.sql   # match_queue table + RLS, squad_members on Realtime
       20261107000005_matcher_cron.sql # pg_cron job that calls run-matcher every 5 minutes
+      20261107000006_starters.sql  # system messages, starter_spotlights (server-only), starters_due()
+      20261107000007_starters_cron.sql # pg_cron job that calls post-starters every 30 minutes
+      20261107000008_remove_chess_game.sql # chess is a hobby only, no longer a game
     functions/
       _shared/cors.ts
       _shared/matching.ts        # pure scoring + squad building, no database calls
       _shared/matcher.ts         # one matching pass over the queue (reads + writes the database)
+      _shared/starters.ts        # pure: pick spotlight, build prompt, validate reply, fallback bank
+      _shared/starters_test.ts   # deno test supabase/functions/_shared/starters_test.ts
+      _shared/llm.ts             # callLLM(): one fetch to Groq
+      _shared/post-starter.ts    # postStarter(): load squad, call LLM or bank, insert the message
       join-queue/index.ts        # browser endpoint: join the queue, try to match now
       run-matcher/index.ts       # scheduled endpoint: pg_cron runs a pass every 5 minutes
+      post-starters/index.ts     # scheduled endpoint: starters for quiet squads every 30 minutes
 
   scripts/                       # BACKEND, run locally with the service-role key
     seed-data.json               # ~40 seeded gamers
@@ -202,7 +214,7 @@ internet-cafe/
 
 ## Database schema
 
-There are seven tables, and the split between them is what enforces hidden matching. Public profile fields live in `profiles`. Games and hobbies live in `profile_private`, which only its owner can read. Scores and wildcard flags live in `match_meta`, which no client can read.
+There are eight tables, and the split between them is what enforces hidden matching. Public profile fields live in `profiles`. Games and hobbies live in `profile_private`, which only its owner can read. Scores and wildcard flags live in `match_meta`, and whose hobby each conversation starter was built around lives in `starter_spotlights`; no client can read either.
 
 | Table | Holds | Who can read it |
 | --- | --- | --- |
@@ -212,7 +224,8 @@ There are seven tables, and the split between them is what enforces hidden match
 | `squad_members` | Who is in which squad (one squad per user in v1) | Members of that squad |
 | `match_meta` | Match score and wildcard flag per member | Nobody except the server |
 | `match_queue` | Real users waiting for a squad, with when they joined (`supabase/migrations/20261107000004_queue.sql`) | Only you (your own row). You can delete it to leave; joining goes through `join-queue` |
-| `messages` | Squad chat | Members of that squad |
+| `messages` | Squad chat: member messages (`kind = 'user'`) and conversation starters (`kind = 'system'`, no sender) | Members of that squad |
+| `starter_spotlights` | Which member and hobby each starter spotlighted, and whether it came from the LLM or the bank (`supabase/migrations/20261107000006_starters.sql`) | Nobody except the server |
 
 `supabase/migrations/20261107000001_schema.sql`:
 
@@ -273,11 +286,36 @@ create index messages_squad_created_idx on public.messages(squad_id, created_at)
 alter publication supabase_realtime add table public.messages;
 ```
 
+`supabase/migrations/20261107000006_starters.sql` then changes `messages` and adds the spotlight table:
+
+```sql
+alter table public.messages alter column sender_id drop not null;
+alter table public.messages
+  add column kind text not null default 'user' check (kind in ('user', 'system')),
+  add column meta jsonb; -- riddle answer only: {"answer": "..."}
+alter table public.messages
+  add constraint messages_sender_matches_kind
+  check ((kind = 'user' and sender_id is not null) or (kind = 'system' and sender_id is null));
+
+-- Server-only, like match_meta: RLS on, no policies, no client grants
+create table public.starter_spotlights (
+  id                bigint generated always as identity primary key,
+  squad_id          uuid not null references public.squads(id) on delete cascade,
+  message_id        bigint not null references public.messages(id) on delete cascade,
+  spotlight_user_id uuid references public.profiles(id) on delete cascade, -- null only if nobody had a hobby
+  hobby             text,
+  source            text not null check (source in ('llm', 'bank')),
+  created_at        timestamptz not null default now()
+);
+```
+
+It also adds `public.starters_due(max_squads int)`, which only `service_role` can execute (see Chat).
+
 There's no trigger that creates a profile on sign-up. The frontend inserts `profiles` when onboarding is submitted, so "has a profiles row" means "finished onboarding".
 
 ## Row-level security
 
-RLS is on for every table, and clients can only write their own profile, their own interests and their own chat messages. Squads, memberships and match data are written only by the matcher (`join-queue` and `run-matcher`) using the service-role key, which bypasses RLS.
+RLS is on for every table, and clients can only write their own profile, their own interests and their own chat messages (`kind = 'user'` only; system messages come from the server). Squads, memberships and match data are written only by the matcher (`join-queue` and `run-matcher`) using the service-role key, which bypasses RLS.
 
 The two helper functions are `security definer` on purpose. A policy on `squad_members` that queries `squad_members` directly causes an infinite-recursion error in Postgres.
 
@@ -341,7 +379,14 @@ create policy messages_insert on public.messages for insert to authenticated
   with check (sender_id = auth.uid() and public.is_squad_member(squad_id));
 ```
 
-**Table grants** (`supabase/migrations/20261107000003_grants.sql`). RLS decides which rows a role sees, but a role also needs a table privilege to touch the table at all, and new Supabase projects don't grant these automatically. `anon` gets nothing, because every feature needs a sign-in. `authenticated` gets only what the policies allow: `select, insert, update` on `profiles` and `profile_private`, `select` on `squads` and `squad_members`, and `select, insert` on `messages` (Realtime needs `select`). `match_meta` has no client grant at all, so it stays hidden even if RLS were turned off. `service_role` gets everything. Only `authenticated` can execute the two helper functions.
+`20261107000006_starters.sql` replaces `messages_insert` so clients can't post (or fake) a system message:
+
+```sql
+create policy messages_insert on public.messages for insert to authenticated
+  with check (kind = 'user' and meta is null and sender_id = auth.uid() and public.is_squad_member(squad_id));
+```
+
+**Table grants** (`supabase/migrations/20261107000003_grants.sql`). RLS decides which rows a role sees, but a role also needs a table privilege to touch the table at all, and new Supabase projects don't grant these automatically. `anon` gets nothing, because every feature needs a sign-in. `authenticated` gets only what the policies allow: `select, insert, update` on `profiles` and `profile_private`, `select` on `squads` and `squad_members`, and `select, insert` on `messages` (Realtime needs `select`). `match_meta` and `starter_spotlights` have no client grant at all, so they stay hidden even if RLS were turned off. The table-wide `select` on `messages` already covers the new `kind` and `meta` columns. `service_role` gets everything. Only `authenticated` can execute the two helper functions.
 
 Realtime `postgres_changes` applies the `messages_select` policy, so people only receive messages from their own squad.
 
@@ -352,6 +397,9 @@ Realtime `postgres_changes` applies the `messages_select` policy, so people only
 - [ ] `select * from match_queue` returns only your own row, and inserting a row directly fails
 - [ ] `select * from profiles` returns only you and your squadmates
 - [ ] Inserting a message into another squad fails
+- [ ] `select * from starter_spotlights` fails (no grant)
+- [ ] Inserting a message with `kind: 'system'`, a `meta`, or `sender_id: null` into your own squad fails
+- [ ] `rpc('starters_due', { max_squads: 1 })` fails
 
 ## Auth and onboarding
 
@@ -390,7 +438,7 @@ supabase-js picks up the session from the redirect automatically, so there's no 
 
 On submit, upsert `profiles` first, then `profile_private`, because `profile_private` references `profiles`. If the age is under 18, show a short message saying the app is 18+ for now, save nothing, and sign the user out. The database `check` constraint backs this up.
 
-Tell users in one line on this screen: "We use your games and hobbies to build your squad. We never show them to anyone."
+Tell users in one line on this screen: "We use your games and hobbies to build your squad and pick conversation starters. We never show them to anyone." The account page says the same in lowercase.
 
 After saving, the onboarding page calls `joinQueue()` once and waits for it before going home, so home already sees the queue row. This is the only automatic join (see Matchmaking).
 
@@ -554,7 +602,7 @@ Chat is a plain `messages` table plus a Supabase Realtime subscription, so there
 ```js
 const { data, error } = await supabase
   .from('messages')
-  .select('id, squad_id, sender_id, body, created_at')
+  .select('id, squad_id, sender_id, kind, meta, body, created_at')
   .eq('squad_id', squadId)
   .order('created_at', { ascending: true })
   .limit(200)
@@ -589,8 +637,18 @@ Rules for the frontend:
 - Show sender names by looking up `sender_id` in the squad member list from `getMySquad()`. Don't run an extra query per message.
 - Trim the text. Disable Send when it's empty or over 2000 characters. Enter sends, Shift+Enter adds a new line.
 - Show messages in a `role="log"` region with `aria-live="polite"` so screen readers announce new ones.
+- Messages with `kind = 'system'` are conversation starters: show them as a centered "System" card, with no avatar and no member lookup (`sender_id` is null). If `meta.answer` is set (a riddle), put it in `<details><summary>Reveal answer</summary>…</details>`, which is keyboard-usable as is.
+- System messages count as unread like any message from someone else.
 
 Seeded users don't reply in v1. The demo uses two real accounts in the same squad.
+
+**Conversation starters.** A starter is one question or short riddle that everyone can answer but that gives one member's hobby a natural opening. For example, if someone climbs: "What's your favorite way to be physically active, and how did you get into it?" Nobody is told who it's for.
+
+- **When:** right after the matcher forms a squad (`EdgeRuntime.waitUntil(postStarter(...))` in `_shared/matcher.ts`, so it never slows the response), and from `post-starters` every 30 minutes. `post-starters` handles at most 20 squads per run, from `starters_due()`, oldest last starter first, where either (a) the squad is 5+ minutes old and has no starter yet (the formation one failed), or (b) the last starter is 24h+ old, the last message of any kind is 3h+ old, and a member has written since the last starter.
+- **Spotlight** (`pickSpotlight`, pure): the member spotlighted least recently in this squad (never = first, ties at random; seeds count), then one of their hobbies this squad hasn't had a starter about, or any of theirs if all are used.
+- **LLM:** `callLLM()` sends `STARTER_SYSTEM_PROMPT` (a named constant in `_shared/starters.ts`) plus `buildPrompt()`'s message: the shared games, `Member 1: …`, `Member 2: …` with hobbies only, the spotlight hobby, and the squad's last 5 starters to avoid. Never names, ages, emails, avatars or ids.
+- **Validation** (`validateStarter`, pure, tested in `starters_test.ts`): JSON with `kind` question or riddle, `text` 1–300 characters, a riddle needs an answer. The text and the answer must not contain the spotlight hobby's slug or label (the label is the slug with spaces, e.g. "rock climbing") or any member's display name (as a whole word). On any failure (missing key, HTTP error, 429, 10 s timeout, bad or rejected reply) a random starter from the hand-written `STARTER_BANK` that this squad hasn't had yet is used instead.
+- **Record:** the message is inserted with `kind = 'system'`, `sender_id = null` and `meta = {"answer": …}` for riddles, then a `starter_spotlights` row with `source` `'llm'` or `'bank'`. `postStarter` catches and logs every error, so a starter can never break matching.
 
 ## Frontend
 
@@ -632,7 +690,7 @@ Every function is `async`. It returns plain data, or throws an `Error` with a `.
 | `sendMessage(squadId, body)` | nothing | `invalid` |
 | `subscribeToMessages(squadId, onInsert)` | an `unsubscribe()` function | — |
 
-`Message` = `{ id: number, squad_id: string, sender_id: string, body: string, created_at: string }`.
+`Message` = `{ id: number, squad_id: string, sender_id: string | null, kind: 'user' | 'system', meta: { answer?: string } | null, body: string, created_at: string }`. `sender_id` is null only for `kind = 'system'`.
 
 Implementation notes:
 
@@ -663,13 +721,13 @@ Implementation notes:
 
 We seed about 40 real database users so the matching function has a pool to work with. The matching runs for real against real rows. The only thing that isn't real is that these people aren't humans, and we say so in the pitch.
 
-**`scripts/seed-data.json`**: an array of `{ display_name, age, games, hobbies }`, using only slugs from `site/src/data/options.ts`. Build it in clusters so matches look sensible and a wildcard is genuinely different:
+**`scripts/seed-data.json`**: an array of `{ display_name, age, games, hobbies }`, using only slugs from `site/src/data/options.ts`. Chess is a hobby only, not a game. Build it in clusters so matches look sensible and a wildcard is genuinely different:
 
 | Cluster | Count | Example games | Example hobbies |
 | --- | --- | --- | --- |
 | Competitive FPS | 8 | `valorant`, `cs2`, `apex-legends` | `gym`, `anime` |
 | Cozy | 8 | `stardew-valley`, `animal-crossing`, `minecraft` | `baking`, `reading`, `gardening` |
-| MOBA / strategy | 8 | `league-of-legends`, `dota-2`, `chess` | `music-production`, `poker` |
+| MOBA / strategy | 8 | `league-of-legends`, `dota-2` | `music-production`, `poker`, `chess` |
 | Sandbox / co-op | 8 | `minecraft`, `terraria`, `lethal-company` | `hiking`, `drawing` |
 | Mixed / wildcards | 8 | anything, spread thin | `rock-climbing`, `photography`, `cooking` |
 
@@ -681,7 +739,7 @@ Ages range from 18 to 45. No real people's names or photos: `avatar_url` stays `
 2. Insert its `profiles` row with `is_seed: true`, then its `profile_private` row.
 3. Skip any email that already exists, so the script can be run again safely.
 
-**`scripts/reset-squads.mjs`** deletes every row in `squads` and `match_queue`. The cascade clears `squad_members`, `match_meta` and `messages`. Run it before rehearsals and right before judging, so Jim's live onboarding gets a fresh squad.
+**`scripts/reset-squads.mjs`** deletes every row in `squads` and `match_queue`. The cascade clears `squad_members`, `match_meta`, `messages` and `starter_spotlights`. Run it before rehearsals and right before judging, so Jim's live onboarding gets a fresh squad.
 
 The pool shrinks as squads form. Each squad has at least 2 real people, so 40 seeds fill at most about 13 squads. Run `reset-squads.mjs` if real users are stuck on the waiting page during testing.
 
@@ -708,7 +766,9 @@ Merge to `main` often. Vercel deploys `main`, so a broken `main` means a broken 
 
 - [x] Minimum squad size: 5 at first, relaxing to 4 after an hour and 3 after a day (see Matchmaking).
 - [ ] Should seed users be reusable across squads, so the pool never runs out, instead of being used up?
-- [ ] Do we want a few seeded welcome messages in each new squad for the demo, or keep chat strictly real?
+- [x] Welcome messages in a new squad: yes, as a conversation starter from "System" (see Chat). Seeds still never talk.
+- [ ] Starter validation only catches the hobby's exact slug or label. A starter like "climbing walls" would get through; the system prompt is the main guard. Good enough for v1?
+- [ ] Hobbies (never names) are sent to Groq, a third party, for starters. The onboarding line now says so; mention it in the Devpost AI disclosure too.
 - [ ] No-shows rule: what happens to an empty spot when a member never shows up?
 - [ ] Scale and sustainability answer for Q&A: who pays, and what moderation costs.
 - [ ] Hours bar and graduation are in "Later". Confirm they stay out of v1.

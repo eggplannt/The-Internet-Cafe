@@ -18,13 +18,13 @@
   { "display_name": "Candle Light", "age": 27, "games": ["minecraft", "animal-crossing"], "hobbies": ["baking", "reading"] },
 
   { "display_name": "Baron Macro", "age": 23, "games": ["league-of-legends", "dota-2"], "hobbies": ["chess", "music-production"] },
-  { "display_name": "Support God", "age": 25, "games": ["league-of-legends", "chess"], "hobbies": ["poker", "reading"] },
+  { "display_name": "Support God", "age": 25, "games": ["league-of-legends"], "hobbies": ["poker", "reading"] },
   { "display_name": "Ward Master", "age": 22, "games": ["dota-2", "league-of-legends"], "hobbies": ["chess", "anime"] },
   { "display_name": "Meta King", "age": 28, "games": ["league-of-legends", "dota-2"], "hobbies": ["poker", "music-production"] },
-  { "display_name": "Five Stack", "age": 20, "games": ["dota-2", "chess"], "hobbies": ["poker", "reading"] },
-  { "display_name": "Rune Forge", "age": 26, "games": ["league-of-legends", "chess"], "hobbies": ["music-production", "cooking"] },
+  { "display_name": "Five Stack", "age": 20, "games": ["dota-2"], "hobbies": ["poker", "reading"] },
+  { "display_name": "Rune Forge", "age": 26, "games": ["league-of-legends"], "hobbies": ["music-production", "cooking"] },
   { "display_name": "Draft Wizard", "age": 31, "games": ["dota-2", "league-of-legends"], "hobbies": ["chess", "poker"] },
-  { "display_name": "Creep Score", "age": 24, "games": ["chess", "league-of-legends"], "hobbies": ["reading", "music-production"] },
+  { "display_name": "Creep Score", "age": 24, "games": ["league-of-legends"], "hobbies": ["reading", "music-production"] },
 
   { "display_name": "Block Party", "age": 21, "games": ["minecraft", "terraria"], "hobbies": ["hiking", "drawing"] },
   { "display_name": "Cave Diver", "age": 23, "games": ["terraria", "minecraft"], "hobbies": ["drawing", "hiking"] },
@@ -36,7 +36,7 @@
   { "display_name": "Staff Bearer", "age": 30, "games": ["lethal-company", "terraria"], "hobbies": ["drawing", "hiking"] },
 
   { "display_name": "Wild Lens", "age": 35, "games": ["valorant", "stardew-valley"], "hobbies": ["photography", "rock-climbing"] },
-  { "display_name": "Free Spirit", "age": 38, "games": ["minecraft", "chess"], "hobbies": ["cooking", "photography"] },
+  { "display_name": "Free Spirit", "age": 38, "games": ["minecraft"], "hobbies": ["cooking", "photography"] },
   { "display_name": "Summit Seeker", "age": 29, "games": ["apex-legends", "animal-crossing"], "hobbies": ["rock-climbing", "hiking"] },
   { "display_name": "Lens Flare", "age": 42, "games": ["league-of-legends", "terraria"], "hobbies": ["photography", "cooking"] },
   { "display_name": "Altitude", "age": 33, "games": ["cs2", "stardew-valley"], "hobbies": ["rock-climbing", "reading"] },

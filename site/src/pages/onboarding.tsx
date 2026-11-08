@@ -67,7 +67,7 @@ function OnboardingForm({ user, onUnderAge }: { user: User; onUnderAge: () => vo
     <main className="mx-auto w-full max-w-3xl flex-1 px-8 py-12">
       <h1 className="mb-2 text-6xl">tell us about you.</h1>
       <p className="mb-8 text-2xl">
-        We use your games and hobbies to build your squad. We never show them to anyone.
+        We use your games and hobbies to build your squad and pick conversation starters. We never show them to anyone.
       </p>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-8">

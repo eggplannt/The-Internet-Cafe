@@ -57,6 +57,26 @@ export default function ChatPanel({
         aria-live="polite"
       >
         {messages.map((m) => {
+          // Conversation starters from the app: centered card, no sender to look up
+          if (m.kind === 'system' || m.sender_id === null) {
+            return (
+              <div key={m.id} className="flex justify-center">
+                <div className="w-full max-w-[90%] rounded-lg border-2 border-pink/70 bg-white/5 px-4 py-3 text-center">
+                  <p className="mb-1 text-xs uppercase tracking-wider text-white/70">System</p>
+                  <p className="text-xl">{m.body}</p>
+                  {m.meta?.answer && (
+                    <details className="mt-2 text-lg">
+                      <summary className="cursor-pointer rounded text-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-pink">
+                        Reveal answer
+                      </summary>
+                      <p className="mt-1">{m.meta.answer}</p>
+                    </details>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
           const mine = m.sender_id === myId;
           return (
             <div

@@ -2,6 +2,10 @@
 // and by run-matcher (every few minutes, from pg_cron).
 import type { SupabaseClient } from 'jsr:@supabase/supabase-js@2';
 import { buildSquad, minOthersFor, type Candidate } from './matching.ts';
+import { postStarter } from './post-starter.ts';
+
+// Supabase's runtime global: keeps the function alive for background work after it responds
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 
 // Queue rows not refreshed for this long are dropped, so nobody is matched with someone who left.
 const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
@@ -83,6 +87,10 @@ export async function runMatcher(admin: SupabaseClient): Promise<number> {
     await admin.from('match_queue').delete().in('user_id', ids);
     ids.forEach((id) => available.delete(id));
     formed++;
+
+    // First conversation starter, in the background so it never slows the matcher's response.
+    // If it fails, post-starters retries it on its next run.
+    EdgeRuntime.waitUntil(postStarter(admin, squad.id));
   }
   return formed;
 }

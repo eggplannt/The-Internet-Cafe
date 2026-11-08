@@ -13,7 +13,6 @@ export const GAMES: Option[] = [
   { value: 'stardew-valley', label: 'Stardew Valley' },
   { value: 'animal-crossing', label: 'Animal Crossing' },
   { value: 'lethal-company', label: 'Lethal Company' },
-  { value: 'chess', label: 'Chess' },
 ];
 
 export const HOBBIES: Option[] = [

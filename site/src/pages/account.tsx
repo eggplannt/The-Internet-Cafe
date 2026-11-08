@@ -48,8 +48,11 @@ function EditProfileForm({ profile, interests, onSaved, onCancel }: {
   const [age, setAge] = useState(String(profile.age));
   // Older profiles may have no picture (or a Google photo, which we no longer use): start on the first cup
   const [avatar, setAvatar] = useState(isPreset(profile.avatar_url) ? profile.avatar_url! : AVATARS[0].value);
-  const [games, setGames] = useState<string[]>(interests?.games ?? []);
-  const [hobbies, setHobbies] = useState<string[]>(interests?.hobbies ?? []);
+  // Drop saved values that are no longer options (e.g. chess as a game), so they can't be saved back unseen
+  const [games, setGames] = useState<string[]>(
+    (interests?.games ?? []).filter((g) => GAMES.some((o) => o.value === g)));
+  const [hobbies, setHobbies] = useState<string[]>(
+    (interests?.hobbies ?? []).filter((h) => HOBBIES.some((o) => o.value === h)));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -110,7 +113,7 @@ function EditProfileForm({ profile, interests, onSaved, onCancel }: {
       <TagPicker label="games" options={GAMES} picked={games} onToggle={(v) => setGames(toggleValue(games, v))} />
       <TagPicker label="hobbies" options={HOBBIES} picked={hobbies} onToggle={(v) => setHobbies(toggleValue(hobbies, v))} />
       <p className="text-xl opacity-80">
-        your games and hobbies are only used for matching. we never show them to anyone.
+        your games and hobbies are used to build your squad and pick conversation starters. we never show them to anyone.
       </p>
 
       {error && <p role="alert" className="text-2xl text-pink">{error}</p>}
