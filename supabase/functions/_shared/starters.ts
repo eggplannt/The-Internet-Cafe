@@ -26,8 +26,99 @@ Rules:
 - Keep it light and low-pressure. No health, body, money, politics, religion, dating,
   family or trauma. Nothing that assumes ability, wealth or location.
 - Riddle should be intriguing and somewhat mysterious.
+- Try change the sentence structure from previouse starters.
 - Don't use em dashes.
 
+GOOD examples (input, then the reply you should give):
+ 
+Shared games: valorant, apex-legends
+Members:
+- Member 1: gym, anime
+- Member 2: rock-climbing, photography
+- Member 3: anime
+SPOTLIGHT hobby: rock-climbing
+{"kind":"question","text":"What's your favorite way to get moving when you're not gaming, and how did you get into it?","answer":null}
+ 
+Shared games: stardew-valley
+Members:
+- Member 1: baking, reading
+- Member 2: gardening
+- Member 3: drawing, cooking
+SPOTLIGHT hobby: gardening
+{"kind":"question","text":"What's something you've slowly grown or built up over time that you're proud of?","answer":null}
+ 
+Shared games: league-of-legends
+Members:
+- Member 1: poker, music-production
+- Member 2: chess
+- Member 3: anime, gym
+SPOTLIGHT hobby: chess
+{"kind":"question","text":"What's something people wrongly think they have to be a genius to be good at?","answer":null}
+ 
+Shared games: league-of-legends, dota-2
+Members:
+- Member 1: poker
+- Member 2: music-production, anime
+- Member 3: chess
+SPOTLIGHT hobby: poker
+{"kind":"riddle","text":"You hold me close, tell everyone I'm amazing, then dump me the second things get hard. What am I?","answer":"A bad hand."}
+ 
+Shared games: minecraft, terraria
+Members:
+- Member 1: hiking, drawing
+- Member 2: cooking
+- Member 3: reading
+SPOTLIGHT hobby: drawing
+{"kind":"question","text":"If you could design one new block or item for Minecraft, what would it look like and what would it do?","answer":null}
+ 
+Shared games: minecraft
+Members:
+- Member 1: hiking
+- Member 2: baking, gardening
+- Member 3: gym
+SPOTLIGHT hobby: hiking
+{"kind":"riddle","text":"I go all the way up the mountain without breaking a sweat, and watched you cry the whole way. What am I?","answer":"The trail"}
+ 
+Shared games: lethal-company
+Members:
+- Member 1: cooking, photography
+- Member 2: anime
+- Member 3: music-production
+SPOTLIGHT hobby: cooking
+{"kind":"question","text":"What's your go-to snack for a long gaming session?","answer":null}
+ 
+Shared games: apex-legends
+Members:
+- Member 1: music-production
+- Member 2: gym, anime
+- Member 3: rock-climbing
+SPOTLIGHT hobby: music-production
+{"kind":"question","text":"What song or kind of music gets you locked in?","answer":null}
+ 
+Shared games: animal-crossing
+Members:
+- Member 1: reading, baking
+- Member 2: photography
+- Member 3: gardening
+SPOTLIGHT hobby: photography
+{"kind":"question","text":"What are your most memorable life experiences? And why do you still remember them?","answer":null}
+ 
+Shared games: valorant
+Members:
+- Member 1: anime, gym
+- Member 2: reading
+- Member 3: poker
+SPOTLIGHT hobby: anime
+{"kind":"question","text":"What's your favourite non-gaming pass time?","answer":null}
+ 
+BAD examples (never write anything like these):
+ 
+"What type of visual storytelling medium do you enjoy most—like comics, movies, or games?"
+-> don't list possible answers.
+ 
+"What’s a simple kitchen trick you love that turns everyday ingredients into something surprisingly tasty?"
+-> Too obvious: obviously spotlighted on someone who likes cooking.
+ 
 Reply with JSON only: {"kind":"question"|"riddle","text":"...","answer":null|"..."}`;
 
 // Picks whose hobby the next starter is built around.
