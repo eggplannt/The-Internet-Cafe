@@ -1,4 +1,7 @@
 .env.local
+# Committed on purpose so judges can run the app: only the public URL and the publishable
+# key, which ship in the browser bundle anyway. Never put a secret or service-role key here.
+!site/.env.local
 node_modules/
 site/node_modules/
 dist/

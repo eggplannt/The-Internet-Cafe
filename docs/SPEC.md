@@ -112,7 +112,7 @@ One backend person owns the Supabase project and the Google OAuth client, and sh
 | `SUPABASE_URL` | Your shell, only when running scripts | `scripts/seed.mjs`, `scripts/reset-squads.mjs` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Your shell, only when running scripts | Scripts. Never in `site/src/`, never committed |
 
-Edge Functions get `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` automatically, so nothing needs setting there apart from `MATCHER_SECRET` and `GROQ_API_KEY` (`SUPABASE_ANON_KEY` there is Supabase's own name; the frontend uses the publishable key). Commit `site/.env.example` with empty values, and add `.env.local` to `.gitignore`. Run the scripts from the repo root after `npm install`: `npm run seed`, `npm run reset-squads`, `npm run test:starters`, and the deploy scripts above.
+Edge Functions get `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` automatically, so nothing needs setting there apart from `MATCHER_SECRET` and `GROQ_API_KEY` (`SUPABASE_ANON_KEY` there is Supabase's own name; the frontend uses the publishable key). `site/.env.local` is committed (an exception in `.gitignore`) so judges can run the app without setup: it holds only the URL and the publishable key, which ship in the browser bundle anyway. Every other `.env.local` stays ignored, and no secret ever goes in a committed file. Run the scripts from the repo root after `npm install`: `npm run seed`, `npm run reset-squads`, `npm run test:starters`, and the deploy scripts above.
 
 **Deploy**
 
