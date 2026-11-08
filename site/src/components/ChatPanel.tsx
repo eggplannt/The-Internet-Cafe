@@ -1,11 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { useChat } from '../hooks/useChat';
+import { generateStarter } from '../backend-tools';
 import type { SquadMember } from '../backend-tools';
 
 interface ChatPanelProps {
   squadId: string;
   myId: string;
   members: SquadMember[];
+}
+
+// When a message was sent, in the viewer's own timezone: just the time for today,
+// the date too for anything older (e.g. "3:42 PM" or "Nov 7, 3:42 PM").
+function sentAt(iso: string): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === new Date().toDateString()) return time;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
 // Crude squad chat UI. Only the sender's display_name is shown — never games,
@@ -18,6 +28,25 @@ export default function ChatPanel({
   const { messages, send, error } = useChat(squadId);
   const listRef = useRef<HTMLDivElement>(null);
   const [body, setBody] = useState('');
+  const [generating, setGenerating] = useState(false);
+  // What the last "generate starter" click did: also how we spot why starters fail
+  const [starterNote, setStarterNote] = useState<string | null>(null);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setStarterNote(null);
+    try {
+      const r = await generateStarter(squadId);
+      setStarterNote(r.source === 'llm' ? 'starter posted.' : `starter posted from the backup list (${r.fallback_reason}).`);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      setStarterNote(code === 'too_soon'
+        ? 'a starter was just posted. try again in a minute.'
+        : `couldn't post a starter: ${(err as Error).message}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   // Look the sender's name up from the squad member list passed in by the page.
   const displayName = (id: string) => {
@@ -62,7 +91,10 @@ export default function ChatPanel({
             return (
               <div key={m.id} className="flex justify-center">
                 <div className="w-full max-w-[90%] rounded-lg border-2 border-pink/70 bg-white/5 px-4 py-3 text-center">
-                  <p className="mb-1 text-xs uppercase tracking-wider text-white/70">System</p>
+                  <p className="mb-1 text-xs text-white/70">
+                    <span className="uppercase tracking-wider">Cafe</span>
+                    {' · '}<time dateTime={m.created_at}>{sentAt(m.created_at)}</time>
+                  </p>
                   <p className="text-xl">{m.body}</p>
                   {m.meta?.answer && (
                     <details className="mt-2 text-lg">
@@ -96,6 +128,12 @@ export default function ChatPanel({
                   </p>
                 )}
                 <p className="text-xl">{m.body}</p>
+                <time
+                  dateTime={m.created_at}
+                  className={`mt-1 block text-xs ${mine ? 'text-right text-white/80' : 'text-white/60'}`}
+                >
+                  {sentAt(m.created_at)}
+                </time>
               </div>
             </div>
           );
@@ -103,6 +141,17 @@ export default function ChatPanel({
       </div>
       <form onSubmit={handleSubmit} className="p-4">
         {error && <p className="mb-2 text-pink">{error}</p>}
+        <div className="mb-2 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={generating}
+            className="rounded-lg border-2 border-pink px-4 py-1 text-lg text-white transition hover:bg-pink/20 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50"
+          >
+            {generating ? 'generating…' : 'generate starter'}
+          </button>
+          <p role="status" className="text-base text-white/70">{starterNote}</p>
+        </div>
         <div className="flex gap-2">
           <textarea
             value={body}

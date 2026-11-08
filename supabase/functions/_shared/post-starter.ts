@@ -8,16 +8,24 @@ import {
   type Starter, type StarterMember,
 } from './starters.ts';
 
+// What happened, for the "generate starter" button. fallbackReason says why the bank was
+// used instead of the LLM. Neither field ever contains a hobby, a name or the LLM's reply.
+export type StarterResult =
+  | { ok: true; source: 'llm' | 'bank'; fallbackReason: string | null }
+  | { ok: false; error: string };
+
 // Never throws: a starter failing must never break matching or the cron run.
-export async function postStarter(admin: SupabaseClient, squadId: string): Promise<void> {
+export async function postStarter(admin: SupabaseClient, squadId: string): Promise<StarterResult> {
   try {
-    await post(admin, squadId);
+    return await post(admin, squadId);
   } catch (e) {
     console.error(`postStarter(${squadId}) failed:`, e);
+    // Database errors (e.g. a missing column) are safe to report and are what you need to debug
+    return { ok: false, error: (e as { message?: string }).message ?? String(e) };
   }
 }
 
-async function post(admin: SupabaseClient, squadId: string): Promise<void> {
+async function post(admin: SupabaseClient, squadId: string): Promise<StarterResult> {
   const { data: squad, error: squadErr } = await admin
     .from('squads').select('common_games').eq('id', squadId).single();
   if (squadErr) throw squadErr;
@@ -54,7 +62,10 @@ async function post(admin: SupabaseClient, squadId: string): Promise<void> {
 
   // Try the LLM; on any problem (no key, HTTP error, 429, timeout, bad reply) use the bank
   let starter: Starter | null = null;
-  if (spotlight && Deno.env.get('GROQ_API_KEY')) {
+  let fallbackReason: string | null = null;
+  if (!spotlight) fallbackReason = 'nobody in the squad has a hobby';
+  else if (!Deno.env.get('GROQ_API_KEY')) fallbackReason = 'GROQ_API_KEY is not set';
+  else {
     try {
       const raw = await callLLM(STARTER_SYSTEM_PROMPT, buildPrompt({
         commonGames: squad.common_games,
@@ -64,9 +75,14 @@ async function post(admin: SupabaseClient, squadId: string): Promise<void> {
       }));
       const result = validateStarter(raw, { hobby: spotlight.hobby, memberNames });
       if (result.ok) starter = result.starter;
-      else console.warn(`starter rejected for ${squadId}: ${result.reason}`); // reason only, never the text
+      else {
+        console.warn(`starter rejected for ${squadId}: ${result.reason}`); // reason only, never the text
+        fallbackReason = `LLM reply rejected: ${result.reason}`;
+      }
     } catch (e) {
       console.warn(`LLM call failed for ${squadId}:`, e);
+      // Only the status line ("groq 401: ...") or the timeout name, cut short
+      fallbackReason = `LLM call failed: ${String((e as Error).message ?? e).slice(0, 200)}`;
     }
   }
   const source = starter ? 'llm' : 'bank';
@@ -95,4 +111,5 @@ async function post(admin: SupabaseClient, squadId: string): Promise<void> {
     source,
   });
   if (spotErr) throw spotErr;
+  return { ok: true, source, fallbackReason };
 }

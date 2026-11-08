@@ -7,5 +7,5 @@ export { getMySquad, getMySquads, nextRoute } from './squad';
 export type { Squad, SquadMember } from './squad';
 export { joinQueue, leaveQueue, getQueueStatus, subscribeToMatch } from './queue';
 export type { JoinQueueResult } from './queue';
-export { listMessages, sendMessage, subscribeToMessages } from './messages';
-export type { Message } from './messages';
+export { listMessages, sendMessage, subscribeToMessages, generateStarter } from './messages';
+export type { Message, GenerateStarterResult } from './messages';
