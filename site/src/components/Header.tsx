@@ -35,8 +35,8 @@ function Header() {
         {!loading && !user && (
           <GoogleSignInButton />
         )}
-        {/* Only once you're in a squad. The dot means something new: a new squad or a new message */}
-        {squadIds.length > 0 && (
+        {/* Always there once signed in. The dot means something new: a new squad or a new message */}
+        {!loading && user && (
           <Link to="/squad" className="relative transition-colors hover:text-pink">
             chat rooms
             {unread && !onSquadPage && (

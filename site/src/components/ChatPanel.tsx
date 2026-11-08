@@ -90,7 +90,7 @@ export default function ChatPanel({
             onKeyDown={handleKeyDown}
             rows={2}
             className="flex-1 resize-none bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-xl text-white focus:outline-none focus:ring-2 focus:ring-pink"
-            placeholder="Type a message…"
+            placeholder="Type a message, and get to know your new frends..."
           ></textarea>
           <button
             type="submit"

@@ -33,8 +33,7 @@ function ChatRooms({ myId }: { myId: string }) {
       </p>
     );
   }
-  // Not matched yet: home shows where they are in the queue
-  if (!open) return <Navigate to="/" replace />;
+  if (!open) return <p className="text-3xl">not currently in a squad</p>;
 
   return (
     // Sidebar on the left on wide screens; stacked above the chat on phones
