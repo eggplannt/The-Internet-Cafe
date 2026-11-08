@@ -1,3 +1,5 @@
+import { signInWithGoogle } from "../backend-tools/auth.ts";
+
 function Hero() {
   return (
     <section
@@ -21,19 +23,19 @@ function Hero() {
         </p>
 
         <div className="flex flex-wrap gap-4 text-2xl">
-          <a
-            href="/login"
+          <button
+            onClick={signInWithGoogle}
             className="rounded-lg bg-pink px-8 py-2 text-white transition hover:scale-105 ease-in-out hover:brightness-110"
           >
             log in
-          </a>
+          </button>
 
-          <a
-            href="/signup"
+          <button
+            onClick={signInWithGoogle}
             className="rounded-lg bg-pink px-8 py-2 text-white transition hover:scale-105 ease-in-out hover:brightness-110"
           >
             sign up
-          </a>
+          </button>
         </div>
       </div>
     </section>
