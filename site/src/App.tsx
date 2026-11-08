@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 import Home from './pages/home.tsx';
 import Onboarding from './pages/onboarding.tsx';
 import Account from './pages/account.tsx';
+import SquadPage from './pages/squad.tsx';
 
 // Every page the app has. Unknown paths go back home.
 function App() {
@@ -11,6 +12,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/account" element={<Account />} />
+        <Route path="/squad" element={<SquadPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

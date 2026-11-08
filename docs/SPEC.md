@@ -158,7 +158,7 @@ internet-cafe/
         supabase.ts                # the only createClient() call
         auth.ts                    # signInWithGoogle, signOut
         profile.ts                 # getMyProfile, getMyInterests, saveOnboarding
-        squad.ts                   # getMySquad, nextRoute
+        squad.ts                   # getMySquads, getMySquad, nextRoute
         queue.ts                   # joinQueue, leaveQueue, getQueueStatus, subscribeToMatch
         messages.ts                # listMessages, sendMessage, subscribeToMessages
         index.ts                   # re-exports everything — pages import from here
@@ -168,12 +168,14 @@ internet-cafe/
         useSquad.ts
         useChat.ts
         useMatchStatus.ts          # reads where the user is in matchmaking; never joins
+        useMySquads.ts             # every squad you're in; reloads when you join a new one
+        useUnreadSquads.ts         # unread dots: new squad or new message since you last looked
       pages/
         Landing.tsx
         Onboarding.tsx
         FindSquad.tsx
         Waiting.tsx                # "looking for your squad", leave queue, listens for the match
-        Squad.tsx                  # members + chat
+        squad.tsx                  # "chat rooms": members + shared game(s) + chat
         account.tsx                # your own profile, games and hobbies; sign out
       components/
         ProtectedRoute.tsx
@@ -599,7 +601,7 @@ The frontend is six routes, and every page talks to Supabase only through `site/
 | `/onboarding` | `Onboarding.tsx` | Session, no profile | The onboarding form |
 | `/find` | `FindSquad.tsx` | Profile, not in a squad or the queue | Usually skipped: submitting onboarding already calls `joinQueue()` once. A "Find my squad" button here (calls `joinQueue()`) is the way back in after "Leave queue". On `matched` go to `/squad`, on `waiting` go to `/waiting` |
 | `/waiting` | `Waiting.tsx` | In the queue | "Looking for your squad…", how long you've waited, and a "Leave queue" button (`leaveQueue()`, then `/find`). Reads `getQueueStatus()` on open (never `joinQueue()`), and listens with `subscribeToMatch()` to move to `/squad` the moment a squad forms |
-| `/squad` | `Squad.tsx` | In a squad | Member cards (name + avatar only), the shared game(s), and the chat |
+| `/squad` | `squad.tsx` | In a squad (otherwise → `/`) | The chat rooms. A sidebar on the left lists every squad you're in (named after its shared game(s), with a member count); the open one is in the URL as `?squad=<id>` and defaults to the first. The open squad's members (name + avatar only) sit in one row across the top, then its shared game(s), then the chat. On phones the sidebar stacks above. Linked as "chat rooms" in the nav once you're in any squad. Unread dots (one per squad in the sidebar, one on the nav link for all of them) mean a squad you've never opened, or a message from someone else since you last had it open. "Last opened" is kept per device in `localStorage` (`squad-seen:<squad_id>`), so no table is needed. The home banner says nothing once you're matched; the nav link replaces it. v1 still allows one squad per user (unique index on `squad_members`), so the list has at most one entry for now, but the page is built for many |
 | `/account` | `account.tsx` | Session (no profile → `/onboarding`) | Your avatar, name, age, email, and your own games and hobbies (from `getMyInterests()`), plus sign out. Linked as "account" in the nav when signed in |
 | `*` | — | — | Redirect to `/` |
 
@@ -616,7 +618,8 @@ Every function is `async`. It returns plain data, or throws an `Error` with a `.
 | `getMyProfile()` | `{ id, display_name, age, avatar_url }` or `null` | — |
 | `getMyInterests()` | `{ games: string[], hobbies: string[] }` (your own `profile_private` row) or `null` | — |
 | `saveOnboarding({ display_name, age, games, hobbies })` | nothing | `under_18`, `invalid` |
-| `getMySquad()` | `{ squad_id, common_games: string[], members: [{ id, display_name, avatar_url }] }` or `null` | — |
+| `getMySquads()` | `Squad[]`: every squad you're in, oldest first, each `{ squad_id, common_games: string[], members: [{ id, display_name, avatar_url }] }`. `[]` if none | — |
+| `getMySquad()` | your first `Squad` (same shape) or `null`. Built on `getMySquads()`, so it keeps working once multiple squads are allowed | — |
 | `joinQueue()` | `{ status: 'matched', squad_id }` or `{ status: 'waiting', joined_at }` | `not_signed_in`, `onboarding_incomplete`, `internal` |
 | `leaveQueue()` | nothing | — |
 | `getQueueStatus()` | `{ joined_at }` or `null` | — |
@@ -630,9 +633,10 @@ Every function is `async`. It returns plain data, or throws an `Error` with a `.
 
 Implementation notes:
 
-- `getMySquad()`: first read your own `squad_members` row to get `squad_id`. Then fetch `squads` to get `common_games`. Then run `supabase.from('squad_members').select('user_id, profiles(id, display_name, avatar_url)').eq('squad_id', squadId)`.
+- `getMySquads()`: three queries however many squads: your own `squad_members` rows (squad ids), then `squads` with `.in('id', ids)` for `common_games`, then `squad_members` with `profiles(id, display_name, avatar_url)` and `.in('squad_id', ids)`.
 - `joinQueue()`: on a non-2xx response, `supabase.functions.invoke` returns an `error` whose `error.context` is the `Response`. Read the code with `await error.context.json()`.
 - Never query `profile_private` for anyone but yourself, and never query `match_meta`.
+- `subscribeToMessages()` and `subscribeToMatch()` give each call its own channel name (a random suffix). supabase-js returns the existing channel for a repeated name, so two listeners on one squad (the nav dot and the chat) would share it, and either unsubscribing would cut off both.
 
 **Hooks**
 

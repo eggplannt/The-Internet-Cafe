@@ -17,8 +17,6 @@ function statusText(state: MatchStatus): string | null {
       return 'you\'re not in the queue for a squad right now.';
     case 'waiting':
       return 'looking for your squad… we\'ll match you as soon as we can!';
-    case 'matched':
-      return 'your squad is ready!';
     case 'error':
       return 'something went wrong finding your squad. try refreshing.';
     default:
@@ -40,7 +38,7 @@ function App() {
     <div className="min-h-screen bg-navy">
       <Header />
       <main>
-        {/* role="status" so screen readers announce changes, e.g. waiting → matched */}
+        {/* role="status" so screen readers announce changes, e.g. checking → waiting */}
         <p role="status" aria-live="polite" className="flex items-center gap-3 bg-pink px-8 py-2 text-2xl text-white empty:hidden">
           {checking && <Spinner />}
           {message}

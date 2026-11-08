@@ -44,8 +44,10 @@ export function subscribeToMessages(
   squadId: string,
   onInsert: (message: Message) => void,
 ): () => void {
+  // Unique name per call: supabase-js hands back the existing channel for a repeated name,
+  // so the nav's unread dot and the chat would share one, and either unsubscribing would cut off both.
   const channel = supabase
-    .channel(`squad:${squadId}`)
+    .channel(`squad:${squadId}:${Math.random().toString(36).slice(2)}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'messages', filter: `squad_id=eq.${squadId}` },

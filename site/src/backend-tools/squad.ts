@@ -14,45 +14,54 @@ export type Squad = {
   members: SquadMember[];
 };
 
-// Returns the user's squad with common games and member list, or null if not in one yet.
-export async function getMySquad(): Promise<Squad | null> {
+// Returns every squad the user is in, oldest first, each with its common games and members.
+// v1 allows one squad per user, but this works for any number, so nothing breaks once
+// joining more than one is allowed. Three queries no matter how many squads.
+export async function getMySquads(): Promise<Squad[]> {
   const user = await currentUser();
-  if (!user) return null;
+  if (!user) return [];
 
-  // Find the user's squad_id
-  const { data: membership, error: memberErr } = await supabase
+  // Which squads am I in?
+  const { data: memberships, error: memberErr } = await supabase
     .from('squad_members')
     .select('squad_id')
-    .eq('user_id', user.id)
-    .maybeSingle();
+    .eq('user_id', user.id);
   if (memberErr) throw memberErr;
-  if (!membership) return null;
+  const ids = (memberships ?? []).map((m: { squad_id: string }) => m.squad_id);
+  if (ids.length === 0) return [];
 
-  const squadId = membership.squad_id;
-
-  // Fetch common_games from the squad row
-  const { data: squad, error: squadErr } = await supabase
+  // Their common games
+  const { data: squads, error: squadErr } = await supabase
     .from('squads')
-    .select('common_games')
-    .eq('id', squadId)
-    .single();
+    .select('id, common_games, created_at')
+    .in('id', ids)
+    .order('created_at', { ascending: true });
   if (squadErr) throw squadErr;
 
-  // Fetch all members with their public profile fields
+  // Everyone in those squads, with their public profile fields
   const { data: members, error: membersErr } = await supabase
     .from('squad_members')
-    .select('user_id, profiles(id, display_name, avatar_url)')
-    .eq('squad_id', squadId);
+    .select('squad_id, profiles(id, display_name, avatar_url)')
+    .in('squad_id', ids);
   if (membersErr) throw membersErr;
 
-  return {
-    squad_id: squadId,
-    common_games: squad.common_games,
-    members: (members ?? []).map((m: { profiles: SquadMember | SquadMember[] }) => {
-      const p = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-      return { id: p.id, display_name: p.display_name, avatar_url: p.avatar_url };
-    }),
-  };
+  return (squads ?? []).map((sq: { id: string; common_games: string[] }) => ({
+    squad_id: sq.id,
+    common_games: sq.common_games,
+    members: (members ?? [])
+      .filter((m: { squad_id: string }) => m.squad_id === sq.id)
+      .map((m: { profiles: SquadMember | SquadMember[] }) => {
+        const p = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+        return { id: p.id, display_name: p.display_name, avatar_url: p.avatar_url };
+      }),
+  }));
+}
+
+// Returns the user's first squad, or null if not in one yet.
+// Kept for callers that only care whether you're matched (e.g. nextRoute).
+export async function getMySquad(): Promise<Squad | null> {
+  const squads = await getMySquads();
+  return squads[0] ?? null;
 }
 
 // Decides which route the signed-in user belongs on.

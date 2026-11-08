@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
 import Header from '../components/Header.tsx';
 import Footer from '../components/Footer.tsx';
+import Avatar from '../components/Avatar.tsx';
 import { PageLoading, Spinner } from '../components/Spinner.tsx';
 import { useAuth } from '../hooks/useAuth.tsx';
 import { getMyInterests, getMyProfile, signOut, type Interests, type Profile } from '../backend-tools';
@@ -53,14 +54,7 @@ function AccountDetails({ email }: { email: string | undefined }) {
   return (
     <div className="flex flex-col gap-8">
       <div className="flex items-center gap-6">
-        {profile.avatar_url ? (
-          // no-referrer: Google's avatar host sometimes refuses images requested from other sites
-          <img src={profile.avatar_url} alt={profile.display_name} referrerPolicy="no-referrer" className="h-24 w-24 rounded-full" />
-        ) : (
-          <div aria-label={profile.display_name} className="flex h-24 w-24 items-center justify-center rounded-full bg-pink text-4xl">
-            {profile.display_name.slice(0, 1).toUpperCase()}
-          </div>
-        )}
+        <Avatar name={profile.display_name} url={profile.avatar_url} className="h-24 w-24 text-4xl" />
         <div>
           <h1 className="text-6xl">{profile.display_name}</h1>
           <p className="text-2xl">age {profile.age}{email ? ` · ${email}` : ''}</p>
@@ -69,7 +63,6 @@ function AccountDetails({ email }: { email: string | undefined }) {
 
       <TagList title="your games" labels={labelsFor(interests?.games ?? [], GAMES)} />
       <TagList title="your hobbies" labels={labelsFor(interests?.hobbies ?? [], HOBBIES)} />
-      <p className="text-xl">only you can see your games and hobbies.</p>
 
       <button
         onClick={signOut}

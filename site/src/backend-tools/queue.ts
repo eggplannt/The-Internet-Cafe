@@ -51,7 +51,8 @@ export async function getQueueStatus(): Promise<{ joined_at: string } | null> {
 // Returns an unsubscribe function — call it on component unmount.
 export function subscribeToMatch(userId: string, onMatched: (squadId: string) => void): () => void {
   const channel = supabase
-    .channel(`match:${userId}`)
+    // Unique name per call, for the same reason as subscribeToMessages
+    .channel(`match:${userId}:${Math.random().toString(36).slice(2)}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'squad_members', filter: `user_id=eq.${userId}` },

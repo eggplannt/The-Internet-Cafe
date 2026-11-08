@@ -3,7 +3,7 @@
 export { signInWithGoogle, signOut } from './auth';
 export { getMyProfile, getMyInterests, saveOnboarding } from './profile';
 export type { Profile, Interests } from './profile';
-export { getMySquad, nextRoute } from './squad';
+export { getMySquad, getMySquads, nextRoute } from './squad';
 export type { Squad, SquadMember } from './squad';
 export { joinQueue, leaveQueue, getQueueStatus, subscribeToMatch } from './queue';
 export type { JoinQueueResult } from './queue';

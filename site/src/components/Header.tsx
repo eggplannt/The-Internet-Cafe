@@ -1,10 +1,18 @@
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { useAuth } from "../hooks/useAuth.tsx";
+import { useMySquads } from "../hooks/useMySquads.ts";
+import { useUnreadSquads } from "../hooks/useUnreadSquads.ts";
 import { signOut } from "../backend-tools/auth.ts";
 import GoogleSignInButton from "./GoogleSignInButton.tsx";
 
 function Header() {
   const { user, loading } = useAuth();
+  const { squads } = useMySquads();
+  const squadIds = squads?.map((s) => s.squad_id) ?? [];
+  // One dot for all squads: is there anything new in any of them?
+  const unread = useUnreadSquads(squadIds, user?.id ?? null).size > 0;
+  // No dot while you're looking at the chat itself
+  const onSquadPage = useLocation().pathname === '/squad';
 
   return (
     <header className="flex items-center justify-between bg-navy px-8 py-4 text-white">
@@ -26,6 +34,17 @@ function Header() {
         {/* Hidden while auth loads too, so signed-in users never see it flash */}
         {!loading && !user && (
           <GoogleSignInButton />
+        )}
+        {/* Only once you're in a squad. The dot means something new: a new squad or a new message */}
+        {squadIds.length > 0 && (
+          <Link to="/squad" className="relative transition-colors hover:text-pink">
+            chat rooms
+            {unread && !onSquadPage && (
+              <span className="absolute -right-3 -top-1 h-3 w-3 rounded-full bg-pink">
+                <span className="sr-only"> (new)</span>
+              </span>
+            )}
+          </Link>
         )}
         {/* Link (not <a>) so moving between pages doesn't reload the app */}
         {!loading && user && (
