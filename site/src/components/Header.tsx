@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { useAuth } from "../hooks/useAuth.tsx";
 import { signOut } from "../backend-tools/auth.ts";
 import GoogleSignInButton from "./GoogleSignInButton.tsx";
@@ -25,6 +26,12 @@ function Header() {
         {/* Hidden while auth loads too, so signed-in users never see it flash */}
         {!loading && !user && (
           <GoogleSignInButton />
+        )}
+        {/* Link (not <a>) so moving between pages doesn't reload the app */}
+        {!loading && user && (
+          <Link to="/account" className="transition-colors hover:text-pink">
+            account
+          </Link>
         )}
         {/* AuthProvider hears the sign-out and flips back to the signed-out nav */}
         {!loading && user && (

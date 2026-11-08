@@ -34,6 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// The spec keeps AuthProvider and useAuth together; this rule only affects dev hot reload
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthState {
   return useContext(AuthContext);
 }

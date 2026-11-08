@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, currentUser } from './supabase';
 import { getMyProfile } from './profile';
 import { getQueueStatus } from './queue';
 
@@ -16,7 +16,7 @@ export type Squad = {
 
 // Returns the user's squad with common games and member list, or null if not in one yet.
 export async function getMySquad(): Promise<Squad | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return null;
 
   // Find the user's squad_id
@@ -57,7 +57,7 @@ export async function getMySquad(): Promise<Squad | null> {
 
 // Decides which route the signed-in user belongs on.
 export async function nextRoute(): Promise<'/' | '/onboarding' | '/find' | '/waiting' | '/squad'> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return '/';
 
   const profile = await getMyProfile();

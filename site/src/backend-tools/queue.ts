@@ -1,12 +1,13 @@
-import { supabase } from './supabase';
+import { supabase, currentUser } from './supabase';
 
 export type JoinQueueResult =
   | { status: 'matched'; squad_id: string }
   | { status: 'waiting'; joined_at: string };
 
 // Puts the user in the matchmaking queue and tries to match them straight away.
-// Safe to call again: it never resets your place in line, and it tells the server you're
-// still around. The waiting page calls it each time it opens.
+// Called once, when onboarding is submitted (and by a "Find my squad" button after leaving).
+// Pages that only show the status use getQueueStatus()/getMySquad() instead.
+// Safe to call again: it never resets your place in line.
 // Throws with .code for known error states the UI can switch on.
 export async function joinQueue(): Promise<JoinQueueResult> {
   const { data, error } = await supabase.functions.invoke('join-queue', { body: {} });
@@ -25,7 +26,7 @@ export async function joinQueue(): Promise<JoinQueueResult> {
 
 // Takes the user out of the queue. Doing nothing if they weren't in it is fine.
 export async function leaveQueue(): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return;
 
   const { error } = await supabase.from('match_queue').delete().eq('user_id', user.id);
@@ -34,7 +35,7 @@ export async function leaveQueue(): Promise<void> {
 
 // Returns when the user joined the queue, or null if they aren't in it.
 export async function getQueueStatus(): Promise<{ joined_at: string } | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return null;
 
   const { data, error } = await supabase

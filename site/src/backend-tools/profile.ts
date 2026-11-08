@@ -1,4 +1,9 @@
-import { supabase } from './supabase';
+import { supabase, currentUser } from './supabase';
+
+export type Interests = {
+  games: string[];
+  hobbies: string[];
+};
 
 export type Profile = {
   id: string;
@@ -16,13 +21,29 @@ type OnboardingInput = {
 
 // Returns the signed-in user's profile, or null if onboarding isn't done yet.
 export async function getMyProfile(): Promise<Profile | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return null;
 
   const { data, error } = await supabase
     .from('profiles')
     .select('id, display_name, age, avatar_url')
     .eq('id', user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+// Returns the signed-in user's own games and hobbies, or null if none are saved yet.
+// Only ever reads your own row: RLS on profile_private allows nothing else.
+export async function getMyInterests(): Promise<Interests | null> {
+  const user = await currentUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from('profile_private')
+    .select('games, hobbies')
+    .eq('user_id', user.id)
     .maybeSingle();
 
   if (error) throw error;
@@ -46,7 +67,7 @@ export async function saveOnboarding(input: OnboardingInput): Promise<void> {
     throw err;
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) {
     const err = new Error('Not signed in.') as Error & { code: string };
     err.code = 'invalid';

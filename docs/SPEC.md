@@ -157,7 +157,7 @@ internet-cafe/
       backend-tools/
         supabase.ts                # the only createClient() call
         auth.ts                    # signInWithGoogle, signOut
-        profile.ts                 # getMyProfile, saveOnboarding
+        profile.ts                 # getMyProfile, getMyInterests, saveOnboarding
         squad.ts                   # getMySquad, nextRoute
         queue.ts                   # joinQueue, leaveQueue, getQueueStatus, subscribeToMatch
         messages.ts                # listMessages, sendMessage, subscribeToMessages
@@ -167,12 +167,14 @@ internet-cafe/
         useProfile.ts
         useSquad.ts
         useChat.ts
+        useMatchStatus.ts          # reads where the user is in matchmaking; never joins
       pages/
         Landing.tsx
         Onboarding.tsx
         FindSquad.tsx
         Waiting.tsx                # "looking for your squad", leave queue, listens for the match
         Squad.tsx                  # members + chat
+        account.tsx                # your own profile, games and hobbies; sign out
       components/
         ProtectedRoute.tsx
         Avatar.tsx
@@ -386,9 +388,17 @@ On submit, upsert `profiles` first, then `profile_private`, because `profile_pri
 
 Tell users in one line on this screen: "We use your games and hobbies to build your squad. We never show them to anyone."
 
+After saving, the onboarding page calls `joinQueue()` once and waits for it before going home, so home already sees the queue row. This is the only automatic join (see Matchmaking).
+
 ## Matchmaking
 
 Matchmaking works like a waiting list, not an instant search, because in real life few people are looking at the same moment you are. "Find my squad" puts you in `match_queue`. A matching pass then forms squads whenever enough compatible people are waiting. It runs right when someone joins, and every 5 minutes on a schedule. You get matched the moment a squad forms around you, whether that takes seconds or days.
+
+**Joining is one action; checking is another.** Don't mix them up:
+
+- **Join once.** The frontend calls `joinQueue()` (the `join-queue` Edge Function) one time, when the user submits onboarding, and again only if they click "Find my squad" after leaving the queue. Each call runs a full matching pass, so it's the slow call: an Edge Function cold start plus about 10 database round trips.
+- **The matcher works in the background.** After that one join, nothing in the browser has to happen for a match to form. Every later `join-queue` call (anyone joining) and the `run-matcher` cron job every 5 minutes runs a pass over the whole queue.
+- **Every page load only reads.** To show where the user is, read their own rows: `getMyProfile()` (no profile → onboarding), `getMySquad()` (matched), `getQueueStatus()` (waiting since `joined_at`). These are plain RLS reads and fast. While waiting, `subscribeToMatch()` hears the match over Realtime. Never call `joinQueue()` just to find out the status. `useMatchStatus()` does exactly this.
 
 Seeds have no queue rows: every seed not already in a squad is always available as filler. Each squad needs **at least 2 real (non-seed) people**, so one real user plus seeds keeps waiting until a second compatible real user joins. That's also how the demo works: two devices join, and they land in the same squad.
 
@@ -400,7 +410,7 @@ Seeds have no queue rows: every seed not already in a squad is always available 
 | Call from the frontend | `supabase.functions.invoke('join-queue', { body: {} })`, which attaches the user's token automatically |
 | Request body | `{}` |
 | 200 (matched) | `{ "status": "matched", "squad_id": "<uuid>" }`. Also returned if you were already in a squad |
-| 200 (waiting) | `{ "status": "waiting", "joined_at": "<timestamp>" }`. Calling it again is safe: it never resets your place in line, and it marks you as still around |
+| 200 (waiting) | `{ "status": "waiting", "joined_at": "<timestamp>" }`. Calling it again is safe: it never resets your place in line, and it refreshes `last_seen_at` |
 | 401 | `{ "error": "not_signed_in" }` |
 | 400 | `{ "error": "onboarding_incomplete" }` (no `profile_private` row) |
 | 500 | `{ "error": "internal" }` |
@@ -579,7 +589,7 @@ Seeded users don't reply in v1. The demo uses two real accounts in the same squa
 
 ## Frontend
 
-The frontend is five routes, and every page talks to Supabase only through `site/src/backend-tools/`. Backend changes then touch one directory, and the backend team can check those files against this spec.
+The frontend is six routes, and every page talks to Supabase only through `site/src/backend-tools/`. Backend changes then touch one directory, and the backend team can check those files against this spec.
 
 **Routes** (`site/src/App.tsx`, react-router)
 
@@ -587,9 +597,10 @@ The frontend is five routes, and every page talks to Supabase only through `site
 | --- | --- | --- | --- |
 | `/` | `Landing.tsx` | Public. Signed-in users are redirected by `nextRoute()` | Pitch line + "Continue with Google" |
 | `/onboarding` | `Onboarding.tsx` | Session, no profile | The onboarding form |
-| `/find` | `FindSquad.tsx` | Profile, not in a squad or the queue | Usually skipped: right after sign-in, `useAutoJoinQueue()` calls `joinQueue()` for any onboarded user who isn't in a squad or the queue. Keep a "Find my squad" button here as a fallback (e.g. after "Leave queue"). On `matched` go to `/squad`, on `waiting` go to `/waiting` |
-| `/waiting` | `Waiting.tsx` | In the queue | "Looking for your squad…", how long you've waited, and a "Leave queue" button (`leaveQueue()`, then `/find`). Calls `joinQueue()` on open, and listens with `subscribeToMatch()` to move to `/squad` the moment a squad forms |
+| `/find` | `FindSquad.tsx` | Profile, not in a squad or the queue | Usually skipped: submitting onboarding already calls `joinQueue()` once. A "Find my squad" button here (calls `joinQueue()`) is the way back in after "Leave queue". On `matched` go to `/squad`, on `waiting` go to `/waiting` |
+| `/waiting` | `Waiting.tsx` | In the queue | "Looking for your squad…", how long you've waited, and a "Leave queue" button (`leaveQueue()`, then `/find`). Reads `getQueueStatus()` on open (never `joinQueue()`), and listens with `subscribeToMatch()` to move to `/squad` the moment a squad forms |
 | `/squad` | `Squad.tsx` | In a squad | Member cards (name + avatar only), the shared game(s), and the chat |
+| `/account` | `account.tsx` | Session (no profile → `/onboarding`) | Your avatar, name, age, email, and your own games and hobbies (from `getMyInterests()`), plus sign out. Linked as "account" in the nav when signed in |
 | `*` | — | — | Redirect to `/` |
 
 `ProtectedRoute` waits for auth to load, calls `nextRoute()`, and redirects if the current path doesn't match.
@@ -603,6 +614,7 @@ Every function is `async`. It returns plain data, or throws an `Error` with a `.
 | `signInWithGoogle()` | nothing (redirects) | — |
 | `signOut()` | nothing | — |
 | `getMyProfile()` | `{ id, display_name, age, avatar_url }` or `null` | — |
+| `getMyInterests()` | `{ games: string[], hobbies: string[] }` (your own `profile_private` row) or `null` | — |
 | `saveOnboarding({ display_name, age, games, hobbies })` | nothing | `under_18`, `invalid` |
 | `getMySquad()` | `{ squad_id, common_games: string[], members: [{ id, display_name, avatar_url }] }` or `null` | — |
 | `joinQueue()` | `{ status: 'matched', squad_id }` or `{ status: 'waiting', joined_at }` | `not_signed_in`, `onboarding_incomplete`, `internal` |
@@ -630,7 +642,7 @@ Implementation notes:
 | `useProfile()` | `{ profile, loading, reload }` |
 | `useSquad()` | `{ squad, loading, reload }` |
 | `useChat(squadId)` | `{ messages, send, loading }`: loads history, subscribes, unsubscribes on unmount |
-| `useAutoJoinQueue()` | `{ status: 'loading' \| 'signed_out' \| 'needs_onboarding' \| 'waiting' \| 'matched' \| 'error', ... }`: on sign-in, joins the queue automatically if the user is onboarded and unmatched, then listens for the match |
+| `useMatchStatus()` | `{ status: 'loading' \| 'signed_out' \| 'needs_onboarding' \| 'not_queued' \| 'waiting' \| 'matched' \| 'error', ... }`: reads the user's profile, squad and queue row (never joins), then listens for the match while waiting |
 
 **Accessibility** (also for the Clio prize)
 
