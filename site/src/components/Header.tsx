@@ -2,7 +2,7 @@ function Header() {
   return (
     <header className="flex items-center justify-between bg-navy px-8 py-4 text-white">
       <a href="/" className="text-3xl">
-        The <span className="text-pink">Internet</span> Cafe
+        The <span className="text-pink">Internet</span> Café
       </a>
 
       <nav className="flex items-center gap-8 text-2xl">

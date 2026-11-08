@@ -9,28 +9,28 @@ function Hero() {
       <div className="relative z-10 max-w-2xl text-white">
 
         <h1 className="mb-6 text-6xl leading-[0.9] md:text-8xl">
-          for gamers
+          hobby-based
           <br />
-          with other hobbies.
+          matchmaking.
         </h1>
 
         <p className="mb-8 max-w-lg text-2xl leading-tight">
-          Your little corner of the internet.
-          A place to play games, explore your hobbies,
-          discover new interests, and meet new people.
+          your new community.
+          a place to meet new people, play games,
+          explore hobbies, and find your forever 5-stack.
         </p>
 
         <div className="flex flex-wrap gap-4 text-2xl">
           <a
             href="/login"
-            className="rounded-lg bg-pink px-8 py-2 text-white transition hover:scale-105 hover:brightness-110"
+            className="rounded-lg bg-pink px-8 py-2 text-white transition hover:scale-500 hover:brightness-110"
           >
             log in
           </a>
 
           <a
             href="/signup"
-            className="rounded-lg border-2 border-pink bg-navy/70 px-8 py-2 text-pink transition hover:scale-105 hover:bg-pink hover:text-white"
+            className="rounded-lg bg-pink px-8 py-2 text-white transition hover:scale-500 hover:brightness-110"
           >
             sign up
           </a>
