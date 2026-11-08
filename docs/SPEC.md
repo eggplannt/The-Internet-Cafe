@@ -18,7 +18,7 @@ Set up the repo so Claude Code reads it every session:
 Spec: docs/SPEC.md. Read it before any change.
 
 - Frontend work lives in site/src/. Backend work lives in supabase/ and scripts/.
-- Contracts: table names, columns, RLS, the form-squad request/response, and the function list in site/src/backend-tools/.
+- Contracts: table names, columns, RLS, the join-queue request/response, and the function list in site/src/backend-tools/.
   Don't change a contract without updating docs/SPEC.md and telling the other team.
 - Never use the service-role key in site/src/. The browser only uses VITE_SUPABASE_PUBLISHABLE_KEY.
 - Never show users other people's games or hobbies, match scores, or who the wildcard is. The one exception is the squad's common game(s), which every member sees.
@@ -38,7 +38,7 @@ v1 is four real features: Google sign-in, onboarding, matchmaking into a squad, 
 | --- | --- | --- |
 | Google sign-in | In | A new Google account can sign in on the deployed URL |
 | Onboarding | In | Name, age (18+), games, hobbies saved to the database |
-| Matchmaking | In | "Find my squad" runs the real Jaccard matching and creates a squad of 3–5 with 1 hidden wildcard |
+| Matchmaking | In | "Find my squad" puts you in a queue. The real Jaccard matcher forms a squad of 3–5 with 1 hidden wildcard and at least 2 real (non-seed) people as soon as enough compatible people are waiting |
 | Squad page | In | Shows members' names and avatars, plus the game the whole squad has in common. Never anyone's full games or hobbies |
 | Squad chat | In | Two real accounts in one squad see each other's messages live |
 | Seeded pool | In | \~40 seeded users so matching has people to match against |
@@ -61,7 +61,7 @@ In text, for anyone reading the Markdown export:
 
 1. **Sign in:** the browser calls Supabase Auth, which hands off to Google OAuth and returns a session.
 2. **Onboarding:** the browser writes its own `profiles` and `profile_private` rows directly. RLS allows only your own rows.
-3. **Matchmaking:** the browser invokes the `form-squad` Edge Function. The function reads the private interests of everyone in the pool with the service-role key, writes `squads`, `squad_members` and `match_meta`, and returns only a `squad_id`.
+3. **Matchmaking:** the browser invokes the `join-queue` Edge Function, which adds the user to `match_queue` and runs a matching pass right away. `pg_cron` also calls `run-matcher` every 5 minutes for anyone still waiting. Both read everyone's private interests with the service-role key, write `squads`, `squad_members` and `match_meta`, and only ever return a status and a `squad_id`. The waiting page hears its match over Realtime.
 4. **Chat:** the browser inserts into `messages`. Postgres streams each insert through Realtime to every subscribed squad member, filtered by RLS.
 
 | Layer | Choice |
@@ -70,7 +70,7 @@ In text, for anyone reading the Markdown export:
 | Hosting | Vercel, deploying from `main` |
 | Auth | Supabase Auth, Google provider |
 | Database | Supabase Postgres with RLS on every table |
-| Server logic | One Supabase Edge Function (Deno, TypeScript): `form-squad` |
+| Server logic | Two Supabase Edge Functions (Deno, TypeScript): `join-queue` (called by the browser) and `run-matcher` (called by `pg_cron` every 5 minutes) |
 | Realtime | Supabase Realtime `postgres_changes` on `messages` |
 
 ## Setup
@@ -82,7 +82,13 @@ One backend person owns the Supabase project and the Google OAuth client, and sh
 1. Create the project on supabase.com and invite every teammate to the organization.
 2. In the repo: `npm i -D supabase`, then `npx supabase login`, `npx supabase init`, `npx supabase link --project-ref <ref>`.
 3. Apply migrations: `npx supabase db push`.
-4. Deploy the function: `npx supabase functions deploy form-squad`.
+4. Store the matcher's settings in Vault and as a function secret. Use one random value for both, and never commit it:
+   ```sql
+   select vault.create_secret('https://<project-ref>.supabase.co', 'project_url');
+   select vault.create_secret('<random secret>', 'matcher_secret');
+   ```
+   then `npx supabase secrets set MATCHER_SECRET=<random secret>`.
+5. Deploy the functions: `npx supabase functions deploy join-queue` and `npx supabase functions deploy run-matcher --no-verify-jwt`. `run-matcher` is called by `pg_cron`, not by users, so it checks the `x-matcher-secret` header instead of a user token.
 
 **Google sign-in**
 
@@ -101,7 +107,7 @@ One backend person owns the Supabase project and the Google OAuth client, and sh
 | `SUPABASE_URL` | Your shell, only when running scripts | `scripts/seed.mjs`, `scripts/reset-squads.mjs` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Your shell, only when running scripts | Scripts. Never in `site/src/`, never committed |
 
-Edge Functions get `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` automatically, so nothing needs setting there (`SUPABASE_ANON_KEY` there is Supabase's own name; the frontend uses the publishable key). Commit `site/.env.example` with empty values, and add `.env.local` to `.gitignore`. Run the scripts from the repo root after `npm install`: `npm run seed`, `npm run reset-squads`.
+Edge Functions get `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` automatically, so nothing needs setting there apart from `MATCHER_SECRET` (`SUPABASE_ANON_KEY` there is Supabase's own name; the frontend uses the publishable key). Commit `site/.env.example` with empty values, and add `.env.local` to `.gitignore`. Run the scripts from the repo root after `npm install`: `npm run seed`, `npm run reset-squads`.
 
 **Deploy**
 
@@ -126,15 +132,19 @@ internet-cafe/
       20261107000001_schema.sql  # tables
       20261107000002_rls.sql     # row-level security + helper functions
       20261107000003_grants.sql  # table privileges (least needed per role)
+      20261107000004_queue.sql   # match_queue table + RLS, squad_members on Realtime
+      20261107000005_matcher_cron.sql # pg_cron job that calls run-matcher every 5 minutes
     functions/
       _shared/cors.ts
       _shared/matching.ts        # pure scoring + squad building, no database calls
-      form-squad/index.ts        # the matchmaking endpoint
+      _shared/matcher.ts         # one matching pass over the queue (reads + writes the database)
+      join-queue/index.ts        # browser endpoint: join the queue, try to match now
+      run-matcher/index.ts       # scheduled endpoint: pg_cron runs a pass every 5 minutes
 
   scripts/                       # BACKEND, run locally with the service-role key
     seed-data.json               # ~40 seeded gamers
     seed.mjs
-    reset-squads.mjs             # clears all squads before a demo
+    reset-squads.mjs             # clears all squads and the queue before a demo
 
   site/                          # FRONTEND (Vite app)
     .env.example
@@ -148,7 +158,8 @@ internet-cafe/
         supabase.ts                # the only createClient() call
         auth.ts                    # signInWithGoogle, signOut
         profile.ts                 # getMyProfile, saveOnboarding
-        squad.ts                   # getMySquad, formSquad, nextRoute
+        squad.ts                   # getMySquad, nextRoute
+        queue.ts                   # joinQueue, leaveQueue, getQueueStatus, subscribeToMatch
         messages.ts                # listMessages, sendMessage, subscribeToMessages
         index.ts                   # re-exports everything — pages import from here
       hooks/
@@ -160,6 +171,7 @@ internet-cafe/
         Landing.tsx
         Onboarding.tsx
         FindSquad.tsx
+        Waiting.tsx                # "looking for your squad", leave queue, listens for the match
         Squad.tsx                  # members + chat
       components/
         ProtectedRoute.tsx
@@ -184,7 +196,7 @@ internet-cafe/
 
 ## Database schema
 
-There are six tables, and the split between them is what enforces hidden matching. Public profile fields live in `profiles`. Games and hobbies live in `profile_private`, which only its owner can read. Scores and wildcard flags live in `match_meta`, which no client can read.
+There are seven tables, and the split between them is what enforces hidden matching. Public profile fields live in `profiles`. Games and hobbies live in `profile_private`, which only its owner can read. Scores and wildcard flags live in `match_meta`, which no client can read.
 
 | Table | Holds | Who can read it |
 | --- | --- | --- |
@@ -193,6 +205,7 @@ There are six tables, and the split between them is what enforces hidden matchin
 | `squads` | One row per squad, plus the games every member (wildcard included) shares | Its members |
 | `squad_members` | Who is in which squad (one squad per user in v1) | Members of that squad |
 | `match_meta` | Match score and wildcard flag per member | Nobody except the server |
+| `match_queue` | Real users waiting for a squad, with when they joined (`supabase/migrations/20261107000004_queue.sql`) | Only you (your own row). You can delete it to leave; joining goes through `join-queue` |
 | `messages` | Squad chat | Members of that squad |
 
 `supabase/migrations/20261107000001_schema.sql`:
@@ -229,7 +242,7 @@ create table public.squad_members (
   primary key (squad_id, user_id)
 );
 -- v1: a user is in at most one squad. This also stops two
--- simultaneous form-squad calls from grabbing the same person.
+-- simultaneous matcher passes from grabbing the same person.
 create unique index squad_members_one_squad_per_user on public.squad_members(user_id);
 
 -- Server-only. Never exposed to clients.
@@ -258,7 +271,7 @@ There's no trigger that creates a profile on sign-up. The frontend inserts `prof
 
 ## Row-level security
 
-RLS is on for every table, and clients can only write their own profile, their own interests and their own chat messages. Squads, memberships and match data are written only by the `form-squad` function using the service-role key, which bypasses RLS.
+RLS is on for every table, and clients can only write their own profile, their own interests and their own chat messages. Squads, memberships and match data are written only by the matcher (`join-queue` and `run-matcher`) using the service-role key, which bypasses RLS.
 
 The two helper functions are `security definer` on purpose. A policy on `squad_members` that queries `squad_members` directly causes an infinite-recursion error in Postgres.
 
@@ -330,6 +343,7 @@ Realtime `postgres_changes` applies the `messages_select` policy, so people only
 
 - [ ] `select * from profile_private` returns only your own row
 - [ ] `select * from match_meta` returns zero rows
+- [ ] `select * from match_queue` returns only your own row, and inserting a row directly fails
 - [ ] `select * from profiles` returns only you and your squadmates
 - [ ] Inserting a message into another squad fails
 
@@ -354,7 +368,8 @@ supabase-js picks up the session from the redirect automatically, so there's no 
 | --- | --- |
 | No session | `/` |
 | Session, no `profiles` row | `/onboarding` |
-| Profile, not in a squad | `/find` |
+| Profile, not in a squad or the queue | `/find` |
+| In the queue | `/waiting` |
 | In a squad | `/squad` |
 
 **Onboarding form**
@@ -373,38 +388,59 @@ Tell users in one line on this screen: "We use your games and hobbies to build y
 
 ## Matchmaking
 
-One Edge Function, `form-squad`, builds the calling user's squad on the spot from everyone who isn't in a squad yet. It scores each person by overlap (Jaccard similarity), takes the closest matches and adds one hidden wildcard. It returns only a squad ID.
+Matchmaking works like a waiting list, not an instant search, because in real life few people are looking at the same moment you are. "Find my squad" puts you in `match_queue`. A matching pass then forms squads whenever enough compatible people are waiting. It runs right when someone joins, and every 5 minutes on a schedule. You get matched the moment a squad forms around you, whether that takes seconds or days.
+
+Seeds have no queue rows: every seed not already in a squad is always available as filler. Each squad needs **at least 2 real (non-seed) people**, so one real user plus seeds keeps waiting until a second compatible real user joins. That's also how the demo works: two devices join, and they land in the same squad.
 
 **Contract (frontend and backend both build to this)**
 
 |  |  |
 | --- | --- |
-| Endpoint | `POST /functions/v1/form-squad` |
-| Call from the frontend | `supabase.functions.invoke('form-squad', { body: {} })`, which attaches the user's token automatically |
+| Endpoint | `POST /functions/v1/join-queue` |
+| Call from the frontend | `supabase.functions.invoke('join-queue', { body: {} })`, which attaches the user's token automatically |
 | Request body | `{}` |
-| 200 | `{ "squad_id": "<uuid>", "already_in_squad": false }` |
-| 200 (already in a squad) | `{ "squad_id": "<uuid>", "already_in_squad": true }`. Calling it twice is safe |
+| 200 (matched) | `{ "status": "matched", "squad_id": "<uuid>" }`. Also returned if you were already in a squad |
+| 200 (waiting) | `{ "status": "waiting", "joined_at": "<timestamp>" }`. Calling it again is safe: it never resets your place in line, and it marks you as still around |
 | 401 | `{ "error": "not_signed_in" }` |
 | 400 | `{ "error": "onboarding_incomplete" }` (no `profile_private` row) |
-| 409 | `{ "error": "not_enough_people" }` (fewer than 2 others who share a game with the caller) |
 | 500 | `{ "error": "internal" }` |
 
-The response never includes scores, wildcard flags, or anyone's games or hobbies.
+Leaving the queue is a plain delete of your own `match_queue` row, which RLS allows. The response never includes scores, wildcard flags, or anyone's games or hobbies.
+
+**One matching pass** (`supabase/functions/_shared/matcher.ts`)
+
+1. Drop queue rows whose `last_seen_at` is older than 7 days, so nobody gets matched with someone who left.
+2. Load the queue, longest wait first. The pool is every queued real user plus every seed, minus anyone already in a squad.
+3. For each waiting user in that order (the "anchor"), run `buildSquad` with a minimum size based on how long they've waited.
+4. If it returns a squad, insert one `squads` row, then all `squad_members` rows **in one insert call**, then all `match_meta` rows. Remove those people from the queue and the pool, and move on to the next anchor.
+5. If the member insert fails with a unique violation (`23505`), another pass got there first. Delete the new squad and stop; anyone still waiting is picked up on the next pass. If `match_meta` fails, delete the squad (the cascade removes its members).
 
 **Algorithm** (`supabase/functions/_shared/matching.ts`: pure functions, no database calls, so it's easy to test and explain)
 
 1. Turn each user into a set of tags, with games prefixed `g:` and hobbies `h:`, so a game and a hobby with the same name don't count as a match.
 2. Score = shared tags ÷ all distinct tags across both users. 0 means nothing in common, 1 means identical. If both sets are empty, the score is 0.
-3. **Every member, wildcard included, must share at least one game with the whole squad.** `commonGames` starts as the caller's games. Someone is only added if they play at least one game still in `commonGames`, and adding them narrows `commonGames` to the games they also play. So `commonGames` is never empty, and every member sees the same game(s) on the Squad page.
-4. Score everyone in the pool who shares a game with the caller, highest first (ties go to whoever signed up first).
-5. Squad size is the caller plus up to 4 others. Walk down the scored list and take up to 3 close matches, skipping anyone who would leave `commonGames` empty. If fewer than 2 are found, return `not_enough_people`.
-6. Then add 1 wildcard: the lowest-scoring person left who still plays a game in `commonGames`.
-7. If nobody qualifies as a wildcard but there are 3 close matches, the lowest-scoring of those 3 becomes the wildcard. With only 2 others there is no wildcard.
+3. **Every member, wildcard included, must share at least one game with the whole squad.** `commonGames` starts as the anchor's games. Someone is only added if they play at least one game still in `commonGames`, and adding them narrows `commonGames` to the games they also play. So `commonGames` is never empty, and every member sees the same game(s) on the Squad page.
+4. Score everyone in the pool who shares a game with the anchor. Sort real people ahead of seeds; within each group, highest score first (ties go to whoever signed up first).
+5. Squad size is the anchor plus up to 4 others. Walk down the sorted list and take up to 3 close matches, skipping anyone who would leave `commonGames` empty.
+6. Then add 1 wildcard: the lowest-scoring person left who still plays a game in `commonGames`. If nobody qualifies but there are 3 close matches, the lowest-scoring of those 3 becomes the wildcard.
+7. The squad only forms if it has **at least 2 real people** and enough members for the anchor's wait. The size rule relaxes over time, so people with unusual tastes aren't stuck forever:
+
+   | Anchor has waited | Smallest squad accepted |
+   | --- | --- |
+   | Under 1 hour | 5 |
+   | 1 to 24 hours | 4 |
+   | Over 24 hours | 3 |
+
+   Otherwise the anchor keeps waiting.
 
 ```ts
-export type Candidate = { id: string; games: string[]; hobbies: string[]; createdAt: string };
+export type Candidate = { id: string; games: string[]; hobbies: string[]; createdAt: string; isSeed: boolean };
 export type Pick = { id: string; score: number; isWildcard: boolean };
 export type SquadResult = { picks: Pick[]; commonGames: string[] };
+
+// Every squad needs at least this many real (non-seed) people, so a demo always
+// puts two real devices together and seeds are only ever filler.
+export const MIN_REAL_MEMBERS = 2;
 
 const tags = (c: Candidate) =>
   new Set([...c.games.map((g) => `g:${g}`), ...c.hobbies.map((h) => `h:${h}`)]);
@@ -420,35 +456,60 @@ export function sharesGame(a: Candidate, b: Candidate): boolean {
   return a.games.some((g) => b.games.includes(g));
 }
 
-export function buildSquad(caller: Candidate, pool: Candidate[], maxOthers = 4): SquadResult | null {
+// The longer the anchor has waited, the smaller a squad we accept,
+// so people with unusual tastes aren't stuck in the queue forever.
+export function minOthersFor(waitedMs: number): number {
+  const HOUR = 60 * 60 * 1000;
+  if (waitedMs < HOUR) return 4;       // squad of 5
+  if (waitedMs < 24 * HOUR) return 3;  // squad of 4
+  return 2;                            // squad of 3
+}
+
+// Builds a squad around the anchor (the longest-waiting real user), or returns null
+// if this pool can't make a squad that meets the rules yet.
+export function buildSquad(
+  anchor: Candidate,
+  pool: Candidate[],
+  minOthers = 2,
+  maxOthers = 4,
+): SquadResult | null {
+  // Real people first, then seeds; within each group, closest match first
+  // (ties go to whoever signed up first)
   const scored = pool
-    .filter((c) => sharesGame(caller, c))
-    .map((c) => ({ c, score: jaccard(caller, c) }))
-    .sort((x, y) => y.score - x.score || x.c.createdAt.localeCompare(y.c.createdAt));
+    .filter((c) => sharesGame(anchor, c))
+    .map((c) => ({ c, score: jaccard(anchor, c) }))
+    .sort((x, y) =>
+      Number(x.c.isSeed) - Number(y.c.isSeed) ||
+      y.score - x.score ||
+      x.c.createdAt.localeCompare(y.c.createdAt));
 
   // Games the whole squad plays so far. We only add someone if this stays non-empty,
   // so every member (wildcard included) is guaranteed at least one game in common.
-  let commonGames = caller.games;
+  let commonGames = anchor.games;
   const keepsCommon = (c: Candidate) => commonGames.some((g) => c.games.includes(g));
   const add = (c: Candidate) => { commonGames = commonGames.filter((g) => c.games.includes(g)); };
 
-  // Closest matches first, up to 3
+  // Close matches first, up to 3
   const close: { c: Candidate; score: number }[] = [];
   for (const s of scored) {
     if (close.length === maxOthers - 1) break;
     if (keepsCommon(s.c)) { close.push(s); add(s.c); }
   }
-  if (close.length < 2) return null;
 
   // Wildcard: the lowest-scoring remaining person who still shares the squad's game
-  const rest = scored.filter((s) => !close.includes(s)).reverse();
+  const rest = scored.filter((s) => !close.includes(s)).sort((x, y) => x.score - y.score);
   let wild = rest.find((s) => keepsCommon(s.c));
   if (wild) add(wild.c);
   // Only 3 others available: the furthest of them becomes the wildcard
   else if (close.length === 3) wild = close.pop();
 
+  const members = [anchor, ...close.map((s) => s.c), ...(wild ? [wild.c] : [])];
+  const others = members.length - 1;
+  const real = members.filter((m) => !m.isSeed).length;
+  if (others < minOthers || real < MIN_REAL_MEMBERS) return null;
+
   const picks: Pick[] = [
-    { id: caller.id, score: 1, isWildcard: false },
+    { id: anchor.id, score: 1, isWildcard: false },
     ...close.map(({ c, score }) => ({ id: c.id, score, isWildcard: false })),
     ...(wild ? [{ id: wild.c.id, score: wild.score, isWildcard: true }] : []),
   ];
@@ -456,20 +517,18 @@ export function buildSquad(caller: Candidate, pool: Candidate[], maxOthers = 4):
 }
 ```
 
-**What `form-squad/index.ts` does, in order**
+**What `join-queue/index.ts` does, in order**
 
 1. Answer the CORS preflight, using the headers from `_shared/cors.ts`.
 2. Make a client with the anon key plus the request's `Authorization` header, and call `auth.getUser()`. If there's no user, return 401.
 3. Make an admin client with `SUPABASE_SERVICE_ROLE_KEY` for everything after this.
-4. If the caller already has a `squad_members` row, return that `squad_id` with `already_in_squad: true`.
-5. Load the caller's `profile_private` row. If there isn't one, return 400.
-6. Load the pool: every `profile_private` row joined to `profiles.created_at`, minus the caller, minus anyone already in `squad_members`. Filtering in TypeScript is fine at this scale.
-7. Run `buildSquad`. If it returns `null`, return 409.
-8. Insert one `squads` row with `common_games` set to the result. Insert all `squad_members` rows **in one insert call**, then all `match_meta` rows.
-9. If the member insert fails with a unique violation (`23505`, someone else grabbed a person first), delete the new squad and retry from step 6, at most twice.
-10. Return `{ squad_id, already_in_squad: false }`.
+4. If the caller already has a `squad_members` row, return `matched` with that `squad_id`.
+5. If the caller has no `profile_private` row, return 400.
+6. Upsert the caller's `match_queue` row with a fresh `last_seen_at`. `joined_at` is left out, so a repeat call keeps their place in line.
+7. Run one matching pass.
+8. Return `matched` if the caller is now in a squad, otherwise `waiting` with their `joined_at`.
 
-**Frontend stub.** Until the real function is deployed, the backend team deploys a version that returns `{ squad_id, already_in_squad: false }` for a squad created by hand. That way the frontend is never blocked.
+**`run-matcher/index.ts`** checks the `x-matcher-secret` header against `MATCHER_SECRET`, runs one matching pass, and returns `{ "formed": <count> }`. `pg_cron` calls it every 5 minutes (`supabase/migrations/20261107000005_matcher_cron.sql`), reading the URL and secret from Vault.
 
 ## Chat
 
@@ -520,16 +579,17 @@ Seeded users don't reply in v1. The demo uses two real accounts in the same squa
 
 ## Frontend
 
-The frontend is four routes, and every page talks to Supabase only through `site/src/backend-tools/`. Backend changes then touch one directory, and the backend team can check those files against this spec.
+The frontend is five routes, and every page talks to Supabase only through `site/src/backend-tools/`. Backend changes then touch one directory, and the backend team can check those files against this spec.
 
 **Routes** (`site/src/App.tsx`, react-router)
 
 | Path | Page | Guard | Shows |
 | --- | --- | --- | --- |
-| `/` | `Landing.jsx` | Public. Signed-in users are redirected by `nextRoute()` | Pitch line + "Continue with Google" |
-| `/onboarding` | `Onboarding.jsx` | Session, no profile | The onboarding form |
-| `/find` | `FindSquad.jsx` | Profile, no squad | "Find my squad" button, loading state, friendly `not_enough_people` message |
-| `/squad` | `Squad.jsx` | In a squad | Member cards (name + avatar only), the shared game(s), and the chat |
+| `/` | `Landing.tsx` | Public. Signed-in users are redirected by `nextRoute()` | Pitch line + "Continue with Google" |
+| `/onboarding` | `Onboarding.tsx` | Session, no profile | The onboarding form |
+| `/find` | `FindSquad.tsx` | Profile, not in a squad or the queue | "Find my squad" button calling `joinQueue()`, loading state. On `matched` go to `/squad`, on `waiting` go to `/waiting` |
+| `/waiting` | `Waiting.tsx` | In the queue | "Looking for your squad…", how long you've waited, and a "Leave queue" button (`leaveQueue()`, then `/find`). Calls `joinQueue()` on open, and listens with `subscribeToMatch()` to move to `/squad` the moment a squad forms |
+| `/squad` | `Squad.tsx` | In a squad | Member cards (name + avatar only), the shared game(s), and the chat |
 | `*` | — | — | Redirect to `/` |
 
 `ProtectedRoute` waits for auth to load, calls `nextRoute()`, and redirects if the current path doesn't match.
@@ -545,8 +605,11 @@ Every function is `async`. It returns plain data, or throws an `Error` with a `.
 | `getMyProfile()` | `{ id, display_name, age, avatar_url }` or `null` | — |
 | `saveOnboarding({ display_name, age, games, hobbies })` | nothing | `under_18`, `invalid` |
 | `getMySquad()` | `{ squad_id, common_games: string[], members: [{ id, display_name, avatar_url }] }` or `null` | — |
-| `formSquad()` | `{ squad_id, already_in_squad }` | `not_signed_in`, `onboarding_incomplete`, `not_enough_people`, `internal` |
-| `nextRoute()` | `'/'`, `'/onboarding'`, `'/find'` or `'/squad'` | — |
+| `joinQueue()` | `{ status: 'matched', squad_id }` or `{ status: 'waiting', joined_at }` | `not_signed_in`, `onboarding_incomplete`, `internal` |
+| `leaveQueue()` | nothing | — |
+| `getQueueStatus()` | `{ joined_at }` or `null` | — |
+| `subscribeToMatch(userId, onMatched)` | an `unsubscribe()` function. `onMatched(squadId)` fires when the matcher puts you in a squad | — |
+| `nextRoute()` | `'/'`, `'/onboarding'`, `'/find'`, `'/waiting'` or `'/squad'` | — |
 | `listMessages(squadId)` | `Message[]` | — |
 | `sendMessage(squadId, body)` | nothing | `invalid` |
 | `subscribeToMessages(squadId, onInsert)` | an `unsubscribe()` function | — |
@@ -556,7 +619,7 @@ Every function is `async`. It returns plain data, or throws an `Error` with a `.
 Implementation notes:
 
 - `getMySquad()`: first read your own `squad_members` row to get `squad_id`. Then fetch `squads` to get `common_games`. Then run `supabase.from('squad_members').select('user_id, profiles(id, display_name, avatar_url)').eq('squad_id', squadId)`.
-- `formSquad()`: on a non-2xx response, `supabase.functions.invoke` returns an `error` whose `error.context` is the `Response`. Read the code with `await error.context.json()`.
+- `joinQueue()`: on a non-2xx response, `supabase.functions.invoke` returns an `error` whose `error.context` is the `Response`. Read the code with `await error.context.json()`.
 - Never query `profile_private` for anyone but yourself, and never query `match_meta`.
 
 **Hooks**
@@ -598,9 +661,11 @@ Ages range from 18 to 45. No real people's names or photos: `avatar_url` stays `
 2. Insert its `profiles` row with `is_seed: true`, then its `profile_private` row.
 3. Skip any email that already exists, so the script can be run again safely.
 
-**`scripts/reset-squads.mjs`** deletes every row in `squads`. The cascade clears `squad_members`, `match_meta` and `messages`. Run it before rehearsals and right before judging, so Jim's live onboarding gets a fresh squad.
+**`scripts/reset-squads.mjs`** deletes every row in `squads` and `match_queue`. The cascade clears `squad_members`, `match_meta` and `messages`. Run it before rehearsals and right before judging, so Jim's live onboarding gets a fresh squad.
 
-The pool shrinks as squads form: 40 seeds give about 10 squads of 5. Run `reset-squads.mjs` if a judge testing the app hits `not_enough_people`.
+The pool shrinks as squads form. Each squad has at least 2 real people, so 40 seeds fill at most about 13 squads. Run `reset-squads.mjs` if real users are stuck on the waiting page during testing.
+
+**Demo:** run `reset-squads.mjs`, then have both devices pick at least one game in common and click "Find my squad". The first device waits; the second one forms the squad, and the first device jumps to the Squad page over Realtime.
 
 ## Build order and checkpoints
 
@@ -609,8 +674,8 @@ Contracts come first: both teams build against this doc from minute one, and the
 | By | Backend | Frontend | Checkpoint (whole team) |
 | --- | --- | --- | --- |
 | Sat 5:30 PM | Supabase project, both migrations pushed, Google provider on | Vite + Tailwind + router skeleton, `backend-tools/` stubs, Landing with sign-in | Sign in with Google on localhost |
-| Sat 6:30 PM | `form-squad` stub deployed, `options.ts` slugs agreed | Onboarding page saving to `profiles` + `profile_private` | A new user can finish onboarding |
-| Sat 8:00 PM (mentors leave) | Seed script run, RLS checks pass, real `form-squad` deployed | FindSquad page calling `formSquad()`, deployed to Vercel | Sign-in works on the **deployed** URL. Ask mentors about anything still broken |
+| Sat 6:30 PM | `join-queue` stub deployed, `options.ts` slugs agreed | Onboarding page saving to `profiles` + `profile_private` | A new user can finish onboarding |
+| Sat 8:00 PM (mentors leave) | Seed script run, RLS checks pass, real `join-queue` and `run-matcher` deployed | FindSquad and Waiting pages calling `joinQueue()`, deployed to Vercel | Sign-in works on the **deployed** URL. Ask mentors about anything still broken |
 | Sat 11:00 PM | Fix bugs, `reset-squads.mjs` | Squad page + chat with realtime | Two real accounts chat live in one squad |
 | Sun 8:00 AM | Feature freeze | Feature freeze, accessibility checklist | Full run-through as Jim on the deployed URL |
 | Sun 10:30 AM | — | — | Devpost video (2–5 min) recorded and uploaded |
@@ -621,7 +686,7 @@ Merge to `main` often. Vercel deploys `main`, so a broken `main` means a broken 
 
 ## Open questions
 
-- [ ] Minimum squad size: v1 allows 3. Is that OK, or do we wait until 5 people are available?
+- [x] Minimum squad size: 5 at first, relaxing to 4 after an hour and 3 after a day (see Matchmaking).
 - [ ] Should seed users be reusable across squads, so the pool never runs out, instead of being used up?
 - [ ] Do we want a few seeded welcome messages in each new squad for the demo, or keep chat strictly real?
 - [ ] No-shows rule: what happens to an empty spot when a member never shows up?

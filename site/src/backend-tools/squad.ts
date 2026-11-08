@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getMyProfile } from './profile';
+import { getQueueStatus } from './queue';
 
 export type SquadMember = {
   id: string;
@@ -11,11 +12,6 @@ export type Squad = {
   squad_id: string;
   common_games: string[];
   members: SquadMember[];
-};
-
-export type FormSquadResult = {
-  squad_id: string;
-  already_in_squad: boolean;
 };
 
 // Returns the user's squad with common games and member list, or null if not in one yet.
@@ -59,33 +55,20 @@ export async function getMySquad(): Promise<Squad | null> {
   };
 }
 
-// Invokes the form-squad Edge Function. Calling it twice is safe — returns existing squad.
-// Throws with .code for known error states the UI can switch on.
-export async function formSquad(): Promise<FormSquadResult> {
-  const { data, error } = await supabase.functions.invoke('form-squad', { body: {} });
-
-  if (error) {
-    // supabase-js wraps non-2xx responses — read the actual error code from the body
-    const body = await (error as { context?: Response }).context?.json().catch(() => null);
-    const code = body?.error ?? 'internal';
-    const err = new Error(code) as Error & { code: string };
-    err.code = code;
-    throw err;
-  }
-
-  return data as FormSquadResult;
-}
-
 // Decides which route the signed-in user belongs on.
-export async function nextRoute(): Promise<'/' | '/onboarding' | '/find' | '/squad'> {
+export async function nextRoute(): Promise<'/' | '/onboarding' | '/find' | '/waiting' | '/squad'> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return '/';
 
   const profile = await getMyProfile();
   if (!profile) return '/onboarding';
 
+  // Squad first: being matched beats being in the queue
   const squad = await getMySquad();
-  if (!squad) return '/find';
+  if (squad) return '/squad';
 
-  return '/squad';
+  const queued = await getQueueStatus();
+  if (queued) return '/waiting';
+
+  return '/find';
 }

@@ -3,7 +3,9 @@
 export { signInWithGoogle, signOut } from './auth';
 export { getMyProfile, saveOnboarding } from './profile';
 export type { Profile } from './profile';
-export { getMySquad, formSquad, nextRoute } from './squad';
-export type { Squad, SquadMember, FormSquadResult } from './squad';
+export { getMySquad, nextRoute } from './squad';
+export type { Squad, SquadMember } from './squad';
+export { joinQueue, leaveQueue, getQueueStatus, subscribeToMatch } from './queue';
+export type { JoinQueueResult } from './queue';
 export { listMessages, sendMessage, subscribeToMessages } from './messages';
 export type { Message } from './messages';
