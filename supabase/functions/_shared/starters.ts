@@ -20,7 +20,8 @@ Rules:
 - It must give a person whose hobby is the SPOTLIGHT a natural opening to talk about it,
   by asking about a broader category the hobby belongs to.
 - Never name the spotlight hobby, never refer to any member, and never say or hint that
-  someone in the group has a particular interest.
+  someone in the group has a particular interest, but don't be on the nose.
+- Don't have possiible or example answers in the question.
 - You may tie it to one of the shared games if that fits naturally.
 - Keep it light and low-pressure. No health, body, money, politics, religion, dating,
   family or trauma. Nothing that assumes ability, wealth or location.

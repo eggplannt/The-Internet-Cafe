@@ -9,6 +9,15 @@ interface ChatPanelProps {
   members: SquadMember[];
 }
 
+// When a message was sent, in the viewer's own timezone: just the time for today,
+// the date too for anything older (e.g. "3:42 PM" or "Nov 7, 3:42 PM").
+function sentAt(iso: string): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === new Date().toDateString()) return time;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
+}
+
 // Crude squad chat UI. Only the sender's display_name is shown — never games,
 // hobbies, match scores, or who the wildcard is.
 export default function ChatPanel({
@@ -82,7 +91,10 @@ export default function ChatPanel({
             return (
               <div key={m.id} className="flex justify-center">
                 <div className="w-full max-w-[90%] rounded-lg border-2 border-pink/70 bg-white/5 px-4 py-3 text-center">
-                  <p className="mb-1 text-xs uppercase tracking-wider text-white/70">System</p>
+                  <p className="mb-1 text-xs text-white/70">
+                    <span className="uppercase tracking-wider">Cafe</span>
+                    {' · '}<time dateTime={m.created_at}>{sentAt(m.created_at)}</time>
+                  </p>
                   <p className="text-xl">{m.body}</p>
                   {m.meta?.answer && (
                     <details className="mt-2 text-lg">
@@ -116,6 +128,12 @@ export default function ChatPanel({
                   </p>
                 )}
                 <p className="text-xl">{m.body}</p>
+                <time
+                  dateTime={m.created_at}
+                  className={`mt-1 block text-xs ${mine ? 'text-right text-white/80' : 'text-white/60'}`}
+                >
+                  {sentAt(m.created_at)}
+                </time>
               </div>
             </div>
           );

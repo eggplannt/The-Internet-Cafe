@@ -637,8 +637,9 @@ Rules for the frontend:
 - Don't add the sent message to the list yourself. It arrives through the subscription like everyone else's. Skip any message whose `id` is already in the list.
 - Show sender names by looking up `sender_id` in the squad member list from `getMySquad()`. Don't run an extra query per message.
 - Trim the text. Disable Send when it's empty or over 2000 characters. Enter sends, Shift+Enter adds a new line.
+- Show when each message was sent, from `created_at` in the viewer's timezone: the time for today, the date and time for older ones, in a `<time dateTime>` element.
 - Show messages in a `role="log"` region with `aria-live="polite"` so screen readers announce new ones.
-- Messages with `kind = 'system'` are conversation starters: show them as a centered "System" card, with no avatar and no member lookup (`sender_id` is null). If `meta.answer` is set (a riddle), put it in `<details><summary>Reveal answer</summary>…</details>`, which is keyboard-usable as is.
+- Messages with `kind = 'system'` are conversation starters: show them as a centered card labelled "Cafe" (the app's voice; the database still says `kind = 'system'`), with no avatar and no member lookup (`sender_id` is null). If `meta.answer` is set (a riddle), put it in `<details><summary>Reveal answer</summary>…</details>`, which is keyboard-usable as is.
 - System messages count as unread like any message from someone else.
 
 Seeded users don't reply in v1. The demo uses two real accounts in the same squad.
