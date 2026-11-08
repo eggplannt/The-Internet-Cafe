@@ -142,6 +142,8 @@ internet-cafe/
       20261107000006_starters.sql  # system messages, starter_spotlights (server-only), starters_due()
       20261107000007_starters_cron.sql # pg_cron job that calls post-starters every 30 minutes
       20261107000008_remove_chess_game.sql # chess is a hobby only, no longer a game
+      20261107000009_replies.sql   # messages.reply_to, same-squad composite foreign key
+      20261107000010_reply_on_delete.sql # deleting a replied-to message clears reply_to instead of failing
     functions/
       _shared/cors.ts
       _shared/matching.ts        # pure scoring + squad building, no database calls
@@ -610,7 +612,7 @@ const { data, error } = await supabase
   .limit(200)
 ```
 
-`reply_to` (nullable `bigint`, added by `supabase/migrations/20261107000009_replies.sql`) is the id of the message being replied to. A composite foreign key `(reply_to, squad_id) → messages (id, squad_id)` (with `unique (id, squad_id)` on `messages`) means the original must be in the same squad. Default `NO ACTION` on delete: v1 has no message deletes, and a squad's messages are all deleted in one cascade. RLS and grants don't change. Starters never set it. The migration must be applied before the frontend that selects `reply_to` goes live, or history fails to load.
+`reply_to` (nullable `bigint`, added by `supabase/migrations/20261107000009_replies.sql`) is the id of the message being replied to. A composite foreign key `(reply_to, squad_id) → messages (id, squad_id)` (with `unique (id, squad_id)` on `messages`) means the original must be in the same squad. `supabase/migrations/20261107000010_reply_on_delete.sql` makes it `on delete set null (reply_to)`: if the original is deleted (e.g. its sender's account is deleted and their messages cascade), replies stay and only lose their `reply_to`, instead of the delete being refused. RLS and grants don't change. Starters never set it. The migration must be applied before the frontend that selects `reply_to` goes live, or history fails to load.
 
 **Subscribe to new messages:**
 
