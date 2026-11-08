@@ -17,6 +17,10 @@ type OnboardingInput = {
   age: number;
   games: string[];
   hobbies: string[];
+  // A preset key from data/avatars.ts (e.g. "preset:smiley").
+  // Optional: left out, the user has no picture and shows their initial.
+  // We never copy the Google account's photo.
+  avatar_url?: string | null;
 };
 
 // Returns the signed-in user's profile, or null if onboarding isn't done yet.
@@ -78,7 +82,7 @@ export async function saveOnboarding(input: OnboardingInput): Promise<void> {
     id: user.id,
     display_name,
     age,
-    avatar_url: user.user_metadata?.avatar_url ?? null,
+    avatar_url: input.avatar_url ?? null,
   });
   if (profileErr) throw profileErr;
 

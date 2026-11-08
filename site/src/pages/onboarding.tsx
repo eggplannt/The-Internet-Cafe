@@ -7,6 +7,7 @@ import { PageLoading, Spinner } from '../components/Spinner.tsx';
 import { useAuth } from '../hooks/useAuth.tsx';
 import { joinQueue, saveOnboarding, signOut } from '../backend-tools';
 import { GAMES, HOBBIES, type Option } from '../data/options.ts';
+import { AVATARS, type AvatarOption } from '../data/avatars.ts';
 
 // A row of toggle buttons. aria-pressed tells screen readers which ones are picked.
 function TagPicker({ label, options, picked, onToggle }: {
@@ -40,6 +41,43 @@ function TagPicker({ label, options, picked, onToggle }: {
   );
 }
 
+// Pick one profile picture. Real radio buttons (visually hidden) so arrow keys and
+// screen readers work for free; the picture itself is the clickable label.
+function AvatarPicker({ options, picked, onPick }: {
+  options: AvatarOption[];
+  picked: string;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="mb-2 text-3xl">profile picture</legend>
+      <div className="flex flex-wrap gap-4">
+        {options.map((o) => (
+          <label
+            key={o.value}
+            className="cursor-pointer rounded-full border-4 border-transparent transition hover:scale-105 has-checked:border-pink has-focus-visible:outline-2 has-focus-visible:outline-white"
+          >
+            <input
+              type="radio"
+              name="avatar"
+              value={o.value}
+              checked={picked === o.value}
+              onChange={() => onPick(o.value)}
+              className="sr-only"
+            />
+            <img
+              src={o.src}
+              alt={o.label}
+              // Small pixel art: keep it crisp instead of blurry when scaled up
+              className="h-20 w-20 rounded-full object-cover [image-rendering:pixelated]"
+            />
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 // Adds the value if it's missing, removes it if it's there
 const toggle = (list: string[], value: string) =>
   list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -51,6 +89,8 @@ function OnboardingForm({ user, onUnderAge }: { user: User; onUnderAge: () => vo
   // Prefilled from the Google account; the user can change it
   const [name, setName] = useState<string>(user.user_metadata?.full_name ?? '');
   const [age, setAge] = useState('');
+  // Only the cups: we deliberately never use the Google account's photo
+  const [avatar, setAvatar] = useState(AVATARS[0].value);
   const [games, setGames] = useState<string[]>([]);
   const [hobbies, setHobbies] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +108,7 @@ function OnboardingForm({ user, onUnderAge }: { user: User; onUnderAge: () => vo
 
     setSaving(true);
     try {
-      await saveOnboarding({ display_name: name.trim(), age: Number(age), games, hobbies });
+      await saveOnboarding({ display_name: name.trim(), age: Number(age), games, hobbies, avatar_url: avatar });
       // The one time we join the queue. From here the matcher works in the background
       // (seconds to days); home only reads the status. We wait for it so that home
       // already sees the queue row when it loads.
@@ -121,6 +161,8 @@ function OnboardingForm({ user, onUnderAge }: { user: User; onUnderAge: () => vo
             className="w-32 rounded-lg bg-white px-4 py-2 text-2xl text-navy focus-visible:outline-2 focus-visible:outline-pink"
           />
         </label>
+
+        <AvatarPicker options={AVATARS} picked={avatar} onPick={setAvatar} />
 
         <TagPicker label="games" options={GAMES} picked={games} onToggle={(v) => setGames(toggle(games, v))} />
         <TagPicker label="hobbies" options={HOBBIES} picked={hobbies} onToggle={(v) => setHobbies(toggle(hobbies, v))} />

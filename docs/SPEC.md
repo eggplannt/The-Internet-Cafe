@@ -154,6 +154,7 @@ internet-cafe/
       main.tsx
       App.tsx                      # routes
       data/options.ts              # SHARED: the list of allowed games and hobbies
+      data/avatars.ts              # the coffee-cup profile pictures (PNGs in assets/) and their preset: keys
       backend-tools/
         supabase.ts                # the only createClient() call
         auth.ts                    # signInWithGoogle, signOut
@@ -384,7 +385,7 @@ supabase-js picks up the session from the redirect automatically, so there's no 
 | Age | Required number, 18 or over | `profiles.age` |
 | Games | At least 1, picked from `GAMES` | `profile_private.games` |
 | Hobbies | At least 1, picked from `HOBBIES` | `profile_private.hobbies` |
-| Avatar | Not asked. Taken from Google `user.user_metadata.avatar_url` | `profiles.avatar_url` |
+| Avatar | Pick one of the six coffee cups in `site/src/data/avatars.ts` (the first is picked by default). We never use the Google account's photo. A cup is saved as a stable key such as `preset:smiley`, not an image URL, because Vite renames asset files on every build. `<Avatar>` turns the key back into the image | `profiles.avatar_url` |
 
 On submit, upsert `profiles` first, then `profile_private`, because `profile_private` references `profiles`. If the age is under 18, show a short message saying the app is 18+ for now, save nothing, and sign the user out. The database `check` constraint backs this up.
 
@@ -617,7 +618,7 @@ Every function is `async`. It returns plain data, or throws an `Error` with a `.
 | `signOut()` | nothing | — |
 | `getMyProfile()` | `{ id, display_name, age, avatar_url }` or `null` | — |
 | `getMyInterests()` | `{ games: string[], hobbies: string[] }` (your own `profile_private` row) or `null` | — |
-| `saveOnboarding({ display_name, age, games, hobbies })` | nothing | `under_18`, `invalid` |
+| `saveOnboarding({ display_name, age, games, hobbies, avatar_url? })` (`avatar_url`: a `preset:` key; left out = no picture, initials shown) | nothing | `under_18`, `invalid` |
 | `getMySquads()` | `Squad[]`: every squad you're in, oldest first, each `{ squad_id, common_games: string[], members: [{ id, display_name, avatar_url }] }`. `[]` if none | — |
 | `getMySquad()` | your first `Squad` (same shape) or `null`. Built on `getMySquads()`, so it keeps working once multiple squads are allowed | — |
 | `joinQueue()` | `{ status: 'matched', squad_id }` or `{ status: 'waiting', joined_at }` | `not_signed_in`, `onboarding_incomplete`, `internal` |
