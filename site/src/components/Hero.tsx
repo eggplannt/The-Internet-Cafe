@@ -1,7 +1,7 @@
 function Hero() {
   return (
     <section
-      className="relative flex min-h-[650px] items-center overflow-hidden bg-cover bg-center px-8 md:px-20"
+      className="relative flex min-h-screen items-center overflow-hidden bg-cover bg-center px-8 md:px-20"
       style={{ backgroundImage: "url('/bg.gif')" }}
     >
       <div className="absolute inset-0 bg-navy/35" />
