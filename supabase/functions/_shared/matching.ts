@@ -17,26 +17,36 @@ export function sharesGame(a: Candidate, b: Candidate): boolean {
 }
 
 export function buildSquad(caller: Candidate, pool: Candidate[], maxOthers = 4): SquadResult | null {
-  // Every member (including wildcard) must share at least one game with the caller
-  const eligible = pool.filter((c) => sharesGame(caller, c));
-  if (eligible.length < 2) return null;
-  const scored = eligible
+  const scored = pool
+    .filter((c) => sharesGame(caller, c))
     .map((c) => ({ c, score: jaccard(caller, c) }))
     .sort((x, y) => y.score - x.score || x.c.createdAt.localeCompare(y.c.createdAt));
-  const others = Math.min(maxOthers, scored.length);
-  const wildcards = others >= 3 ? 1 : 0;
-  const close = scored.slice(0, others - wildcards);
-  const wild = wildcards ? [scored[scored.length - 1]] : [];
+
+  // Games the whole squad plays so far. We only add someone if this stays non-empty,
+  // so every member (wildcard included) is guaranteed at least one game in common.
+  let commonGames = caller.games;
+  const keepsCommon = (c: Candidate) => commonGames.some((g) => c.games.includes(g));
+  const add = (c: Candidate) => { commonGames = commonGames.filter((g) => c.games.includes(g)); };
+
+  // Closest matches first, up to 3
+  const close: { c: Candidate; score: number }[] = [];
+  for (const s of scored) {
+    if (close.length === maxOthers - 1) break;
+    if (keepsCommon(s.c)) { close.push(s); add(s.c); }
+  }
+  if (close.length < 2) return null;
+
+  // Wildcard: the lowest-scoring remaining person who still shares the squad's game
+  const rest = scored.filter((s) => !close.includes(s)).reverse();
+  let wild = rest.find((s) => keepsCommon(s.c));
+  if (wild) add(wild.c);
+  // Only 3 others available: the furthest of them becomes the wildcard
+  else if (close.length === 3) wild = close.pop();
+
   const picks: Pick[] = [
     { id: caller.id, score: 1, isWildcard: false },
     ...close.map(({ c, score }) => ({ id: c.id, score, isWildcard: false })),
-    ...wild.map(({ c, score }) => ({ id: c.id, score, isWildcard: true })),
+    ...(wild ? [{ id: wild.c.id, score: wild.score, isWildcard: true }] : []),
   ];
-  // Games every member of the squad plays (caller + all picks)
-  const allMembers = [caller, ...close.map(({ c }) => c), ...wild.map(({ c }) => c)];
-  const commonGames = allMembers.reduce<string[]>(
-    (acc, m) => acc.filter((g) => m.games.includes(g)),
-    caller.games,
-  );
   return { picks, commonGames };
 }

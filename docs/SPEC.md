@@ -17,11 +17,11 @@ Set up the repo so Claude Code reads it every session:
 
 Spec: docs/SPEC.md. Read it before any change.
 
-- Frontend work lives in src/. Backend work lives in supabase/ and scripts/.
-- Contracts: table names, columns, RLS, the form-squad request/response, and the function list in src/lib/api.js.
+- Frontend work lives in site/src/. Backend work lives in supabase/ and scripts/.
+- Contracts: table names, columns, RLS, the form-squad request/response, and the function list in site/src/backend-tools/.
   Don't change a contract without updating docs/SPEC.md and telling the other team.
-- Never use the service-role key in src/. The browser only uses VITE_SUPABASE_ANON_KEY.
-- Never show users other people's games or hobbies, match scores, or who the wildcard is.
+- Never use the service-role key in site/src/. The browser only uses VITE_SUPABASE_PUBLISHABLE_KEY.
+- Never show users other people's games or hobbies, match scores, or who the wildcard is. The one exception is the squad's common game(s), which every member sees.
 - Out of scope for v1: twin hunt, rewards, co-op game, presence, hours bar, graduation. Don't build them.
 - No new npm packages without asking.
 - Write plain, readable code with short comments on the why. Every teammate must be able to explain every file to judges.
@@ -39,7 +39,7 @@ v1 is four real features: Google sign-in, onboarding, matchmaking into a squad, 
 | Google sign-in | In | A new Google account can sign in on the deployed URL |
 | Onboarding | In | Name, age (18+), games, hobbies saved to the database |
 | Matchmaking | In | "Find my squad" runs the real Jaccard matching and creates a squad of 3–5 with 1 hidden wildcard |
-| Squad page | In | Shows members' names and avatars only, never their games or hobbies |
+| Squad page | In | Shows members' names and avatars, plus the game the whole squad has in common. Never anyone's full games or hobbies |
 | Squad chat | In | Two real accounts in one squad see each other's messages live |
 | Seeded pool | In | \~40 seeded users so matching has people to match against |
 | Twin hunt | Later | — |
@@ -53,7 +53,7 @@ Adding a later feature means a new migration plus new pages. Nothing in v1 needs
 
 ## Architecture
 
-The React app talks straight to Supabase with the public anon key, and row-level security decides what each user can read or write. The one exception is matchmaking. It runs in a server-side Edge Function, because it has to read everyone's private interests.
+The React app talks straight to Supabase with the public publishable key, and row-level security decides what each user can read or write. The one exception is matchmaking. It runs in a server-side Edge Function, because it has to read everyone's private interests.
 
 &#91;embedded content: v1 architecture · React app, Supabase, Google\]
 
@@ -66,7 +66,7 @@ In text, for anyone reading the Markdown export:
 
 | Layer | Choice |
 | --- | --- |
-| Frontend | React + Vite, Tailwind CSS, react-router, `@supabase/supabase-js` v2, plain JavaScript (JSX) |
+| Frontend | React + Vite, Tailwind CSS, react-router, `@supabase/supabase-js` v2, TypeScript (TSX) |
 | Hosting | Vercel, deploying from `main` |
 | Auth | Supabase Auth, Google provider |
 | Database | Supabase Postgres with RLS on every table |
@@ -96,20 +96,20 @@ One backend person owns the Supabase project and the Google OAuth client, and sh
 
 | Variable | Where it lives | Used by |
 | --- | --- | --- |
-| `VITE_SUPABASE_URL` | `.env.local` and the hosting dashboard | Frontend |
-| `VITE_SUPABASE_ANON_KEY` | `.env.local` and the hosting dashboard | Frontend (public, safe to ship) |
+| `VITE_SUPABASE_URL` | `site/.env.local` and the hosting dashboard | Frontend |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | `site/.env.local` and the hosting dashboard | Frontend (public, safe to ship) |
 | `SUPABASE_URL` | Your shell, only when running scripts | `scripts/seed.mjs`, `scripts/reset-squads.mjs` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Your shell, only when running scripts | Scripts. Never in `src/`, never committed |
+| `SUPABASE_SERVICE_ROLE_KEY` | Your shell, only when running scripts | Scripts. Never in `site/src/`, never committed |
 
-Edge Functions get `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` automatically, so nothing needs setting there. The dashboard may label the keys "publishable" and "secret" instead of anon and service role; they're used the same way. Commit `.env.example` with empty values, and add `.env.local` to `.gitignore`.
+Edge Functions get `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` automatically, so nothing needs setting there (`SUPABASE_ANON_KEY` there is Supabase's own name; the frontend uses the publishable key). Commit `site/.env.example` with empty values, and add `.env.local` to `.gitignore`. Run the scripts from the repo root after `npm install`: `npm run seed`, `npm run reset-squads`.
 
 **Deploy**
 
-Deploy the frontend to Vercel from the GitHub repo, with the two `VITE_` variables set. Add a `vercel.json` with `{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }` so react-router routes work on refresh.
+Deploy the frontend to Vercel from the GitHub repo, with the two `VITE_` variables set. Set the Vercel root directory to `site/`. Add a `site/vercel.json` with `{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }` so react-router routes work on refresh.
 
 ## Repo structure and ownership
 
-Everything lives in one GitHub repo. The frontend team owns `src/`, the backend team owns `supabase/` and `scripts/`, and both teams share `docs/` and the vocabulary file.
+Everything lives in one GitHub repo. The frontend team owns `site/`, the backend team owns `supabase/` and `scripts/`, and both teams share `docs/` and the vocabulary file.
 
 ```
 internet-cafe/
@@ -118,8 +118,7 @@ internet-cafe/
     SPEC.md                      # this doc, exported as Markdown
     AI_USE.md                    # running log for the Devpost AI disclosure
   .env.example
-  vercel.json
-  package.json                   # Vite + React + Tailwind + react-router + @supabase/supabase-js
+  package.json                   # @supabase/supabase-js for scripts/ only
 
   supabase/                      # BACKEND
     config.toml
@@ -136,47 +135,51 @@ internet-cafe/
     seed.mjs
     reset-squads.mjs             # clears all squads before a demo
 
-  src/                           # FRONTEND
-    main.jsx
-    App.jsx                      # routes
-    data/options.js              # SHARED: the list of allowed games and hobbies
-    backend-tools/
-      supabase.ts                # the only createClient() call
-      auth.ts                    # signInWithGoogle, signOut
-      profile.ts                 # getMyProfile, saveOnboarding
-      squad.ts                   # getMySquad, formSquad, nextRoute
-      messages.ts                # listMessages, sendMessage, subscribeToMessages
-      index.ts                   # re-exports everything — pages import from here
-    hooks/
-      useAuth.jsx                # AuthProvider + useAuth()
-      useProfile.js
-      useSquad.js
-      useChat.js
-    pages/
-      Landing.jsx
-      Onboarding.jsx
-      FindSquad.jsx
-      Squad.jsx                  # members + chat
-    components/
-      ProtectedRoute.jsx
-      Avatar.jsx
-      TagPicker.jsx
-      MemberCard.jsx
-      MessageList.jsx
-      MessageInput.jsx
+  site/                          # FRONTEND (Vite app)
+    .env.example
+    vercel.json
+    package.json                 # Vite + React + Tailwind + react-router + @supabase/supabase-js
+    src/
+      main.tsx
+      App.tsx                      # routes
+      data/options.ts              # SHARED: the list of allowed games and hobbies
+      backend-tools/
+        supabase.ts                # the only createClient() call
+        auth.ts                    # signInWithGoogle, signOut
+        profile.ts                 # getMyProfile, saveOnboarding
+        squad.ts                   # getMySquad, formSquad, nextRoute
+        messages.ts                # listMessages, sendMessage, subscribeToMessages
+        index.ts                   # re-exports everything — pages import from here
+      hooks/
+        useAuth.tsx                # AuthProvider + useAuth()
+        useProfile.ts
+        useSquad.ts
+        useChat.ts
+      pages/
+        Landing.tsx
+        Onboarding.tsx
+        FindSquad.tsx
+        Squad.tsx                  # members + chat
+      components/
+        ProtectedRoute.tsx
+        Avatar.tsx
+        TagPicker.tsx
+        MemberCard.tsx
+        MessageList.tsx
+        MessageInput.tsx
 ```
 
 | Path | Owner | Notes |
 | --- | --- | --- |
 | `supabase/migrations/` | Backend | Schema and RLS are contracts. Frontend reads them, never edits them |
 | `supabase/functions/` | Backend | Request and response shapes are a contract (see Matchmaking) |
-| `scripts/` | Backend | Uses the service-role key. Never imported by `src/` |
-| `src/backend-tools/` | Frontend | The function list is a contract (see Frontend). Pages never call `supabase` directly |
-| `src/data/options.js` | Shared | The seed data and the onboarding picker both use these exact values |
-| `src/pages/`, `src/components/`, `src/hooks/` | Frontend | One owner per page, so people can work in parallel |
+| `scripts/` | Backend | Uses the service-role key. Never imported by `site/src/` |
+| `site/src/backend-tools/` | Frontend | The function list is a contract (see Frontend). Pages never call `supabase` directly |
+| `site/src/data/options.ts` | Shared | The seed data and the onboarding picker both use these exact values |
+| `site/src/pages/`, `site/src/components/`, `site/src/hooks/` | Frontend | One owner per page, so people can work in parallel |
 | `docs/`, `CLAUDE.md` | Shared | Update the spec first, then the code |
 
-`src/data/options.js` exports `GAMES` and `HOBBIES` as arrays of `{ value, label }`. Each `value` is a lowercase slug such as `valorant` or `rock-climbing`. Matching compares these slugs, so free-text tags aren't allowed in v1.
+`site/src/data/options.ts` exports `GAMES` and `HOBBIES` as arrays of `{ value, label }`. Each `value` is a lowercase slug such as `valorant` or `rock-climbing`. Matching compares these slugs, so free-text tags aren't allowed in v1.
 
 ## Database schema
 
@@ -186,7 +189,7 @@ There are six tables, and the split between them is what enforces hidden matchin
 | --- | --- | --- |
 | `profiles` | Display name, age, avatar, seed flag | You and your squadmates |
 | `profile_private` | Games and hobbies | Only you |
-| `squads` | One row per squad, plus the games every non-wildcard member shares | Its members |
+| `squads` | One row per squad, plus the games every member (wildcard included) shares | Its members |
 | `squad_members` | Who is in which squad (one squad per user in v1) | Members of that squad |
 | `match_meta` | Match score and wildcard flag per member | Nobody except the server |
 | `messages` | Squad chat | Members of that squad |
@@ -204,7 +207,7 @@ create table public.profiles (
   created_at   timestamptz not null default now()
 );
 
--- Private interests. Values are slugs from src/data/options.js.
+-- Private interests. Values are slugs from site/src/data/options.ts.
 create table public.profile_private (
   user_id    uuid primary key references public.profiles(id) on delete cascade,
   games      text[] not null default '{}',
@@ -214,7 +217,7 @@ create table public.profile_private (
 
 create table public.squads (
   id           uuid primary key default gen_random_uuid(),
-  common_games text[] not null default '{}', -- games shared by every non-wildcard member
+  common_games text[] not null default '{}', -- games every member (including wildcard) shares
   created_at   timestamptz not null default now()
 );
 
@@ -342,7 +345,7 @@ await supabase.auth.signInWithOAuth({
 
 supabase-js picks up the session from the redirect automatically, so there's no callback page. `AuthProvider` reads `supabase.auth.getSession()` on load and listens with `supabase.auth.onAuthStateChange`. Sign-out is `supabase.auth.signOut()`.
 
-**Where a user lands.** All routing decisions go through one function in `src/lib/api.js`, so every page agrees:
+**Where a user lands.** All routing decisions go through one function, `nextRoute()` in `site/src/backend-tools/`, so every page agrees:
 
 | State | Route |
 | --- | --- |
@@ -380,7 +383,7 @@ One Edge Function, `form-squad`, builds the calling user's squad on the spot fro
 | 200 (already in a squad) | `{ "squad_id": "<uuid>", "already_in_squad": true }`. Calling it twice is safe |
 | 401 | `{ "error": "not_signed_in" }` |
 | 400 | `{ "error": "onboarding_incomplete" }` (no `profile_private` row) |
-| 409 | `{ "error": "not_enough_people" }` (fewer than 2 others available) |
+| 409 | `{ "error": "not_enough_people" }` (fewer than 2 others who share a game with the caller) |
 | 500 | `{ "error": "internal" }` |
 
 The response never includes scores, wildcard flags, or anyone's games or hobbies.
@@ -389,11 +392,11 @@ The response never includes scores, wildcard flags, or anyone's games or hobbies
 
 1. Turn each user into a set of tags, with games prefixed `g:` and hobbies `h:`, so a game and a hobby with the same name don't count as a match.
 2. Score = shared tags ÷ all distinct tags across both users. 0 means nothing in common, 1 means identical. If both sets are empty, the score is 0.
-3. **Filter the pool to only candidates who share at least one game with the caller.** This applies to every member including the wildcard. If fewer than 2 pass the filter, return `not_enough_people`.
-4. Score every person in the filtered pool against the caller.
-5. Squad size is the caller plus up to 4 others. Take the top 3 by score (ties go to whoever signed up first), then 1 wildcard: the lowest score among the people left.
-6. If fewer than 4 others are available in the filtered pool, take everyone available, and only add a wildcard once there are at least 3 others.
-7. Compute `commonGames`: the intersection of `games` arrays across every member (caller + all picks including wildcard). This is the game the whole squad has in common and is shown on the Squad page.
+3. **Every member, wildcard included, must share at least one game with the whole squad.** `commonGames` starts as the caller's games. Someone is only added if they play at least one game still in `commonGames`, and adding them narrows `commonGames` to the games they also play. So `commonGames` is never empty, and every member sees the same game(s) on the Squad page.
+4. Score everyone in the pool who shares a game with the caller, highest first (ties go to whoever signed up first).
+5. Squad size is the caller plus up to 4 others. Walk down the scored list and take up to 3 close matches, skipping anyone who would leave `commonGames` empty. If fewer than 2 are found, return `not_enough_people`.
+6. Then add 1 wildcard: the lowest-scoring person left who still plays a game in `commonGames`.
+7. If nobody qualifies as a wildcard but there are 3 close matches, the lowest-scoring of those 3 becomes the wildcard. With only 2 others there is no wildcard.
 
 ```ts
 export type Candidate = { id: string; games: string[]; hobbies: string[]; createdAt: string };
@@ -415,27 +418,37 @@ export function sharesGame(a: Candidate, b: Candidate): boolean {
 }
 
 export function buildSquad(caller: Candidate, pool: Candidate[], maxOthers = 4): SquadResult | null {
-  // Every member (including wildcard) must share at least one game with the caller
-  const eligible = pool.filter((c) => sharesGame(caller, c));
-  if (eligible.length < 2) return null;
-  const scored = eligible
+  const scored = pool
+    .filter((c) => sharesGame(caller, c))
     .map((c) => ({ c, score: jaccard(caller, c) }))
     .sort((x, y) => y.score - x.score || x.c.createdAt.localeCompare(y.c.createdAt));
-  const others = Math.min(maxOthers, scored.length);
-  const wildcards = others >= 3 ? 1 : 0;
-  const close = scored.slice(0, others - wildcards);
-  const wild = wildcards ? [scored[scored.length - 1]] : [];
+
+  // Games the whole squad plays so far. We only add someone if this stays non-empty,
+  // so every member (wildcard included) is guaranteed at least one game in common.
+  let commonGames = caller.games;
+  const keepsCommon = (c: Candidate) => commonGames.some((g) => c.games.includes(g));
+  const add = (c: Candidate) => { commonGames = commonGames.filter((g) => c.games.includes(g)); };
+
+  // Closest matches first, up to 3
+  const close: { c: Candidate; score: number }[] = [];
+  for (const s of scored) {
+    if (close.length === maxOthers - 1) break;
+    if (keepsCommon(s.c)) { close.push(s); add(s.c); }
+  }
+  if (close.length < 2) return null;
+
+  // Wildcard: the lowest-scoring remaining person who still shares the squad's game
+  const rest = scored.filter((s) => !close.includes(s)).reverse();
+  let wild = rest.find((s) => keepsCommon(s.c));
+  if (wild) add(wild.c);
+  // Only 3 others available: the furthest of them becomes the wildcard
+  else if (close.length === 3) wild = close.pop();
+
   const picks: Pick[] = [
     { id: caller.id, score: 1, isWildcard: false },
     ...close.map(({ c, score }) => ({ id: c.id, score, isWildcard: false })),
-    ...wild.map(({ c, score }) => ({ id: c.id, score, isWildcard: true })),
+    ...(wild ? [{ id: wild.c.id, score: wild.score, isWildcard: true }] : []),
   ];
-  // Games every member of the squad plays
-  const allMembers = [caller, ...close.map(({ c }) => c), ...wild.map(({ c }) => c)];
-  const commonGames = allMembers.reduce<string[]>(
-    (acc, m) => acc.filter((g) => m.games.includes(g)),
-    caller.games,
-  );
   return { picks, commonGames };
 }
 ```
@@ -504,9 +517,9 @@ Seeded users don't reply in v1. The demo uses two real accounts in the same squa
 
 ## Frontend
 
-The frontend is four routes, and every page talks to Supabase only through `src/backend-tools/`. Backend changes then touch one directory, and the backend team can check those files against this spec.
+The frontend is four routes, and every page talks to Supabase only through `site/src/backend-tools/`. Backend changes then touch one directory, and the backend team can check those files against this spec.
 
-**Routes** (`src/App.jsx`, react-router)
+**Routes** (`site/src/App.tsx`, react-router)
 
 | Path | Page | Guard | Shows |
 | --- | --- | --- | --- |
@@ -518,7 +531,7 @@ The frontend is four routes, and every page talks to Supabase only through `src/
 
 `ProtectedRoute` waits for auth to load, calls `nextRoute()`, and redirects if the current path doesn't match.
 
-**`src/backend-tools/` (contract)**
+**`site/src/backend-tools/` (contract)**
 
 Every function is `async`. It returns plain data, or throws an `Error` with a `.code` string the page can switch on.
 
@@ -564,7 +577,7 @@ Implementation notes:
 
 We seed about 40 real database users so the matching function has a pool to work with. The matching runs for real against real rows. The only thing that isn't real is that these people aren't humans, and we say so in the pitch.
 
-**`scripts/seed-data.json`**: an array of `{ display_name, age, games, hobbies }`, using only slugs from `src/data/options.js`. Build it in clusters so matches look sensible and a wildcard is genuinely different:
+**`scripts/seed-data.json`**: an array of `{ display_name, age, games, hobbies }`, using only slugs from `site/src/data/options.ts`. Build it in clusters so matches look sensible and a wildcard is genuinely different:
 
 | Cluster | Count | Example games | Example hobbies |
 | --- | --- | --- | --- |
@@ -592,8 +605,8 @@ Contracts come first: both teams build against this doc from minute one, and the
 
 | By | Backend | Frontend | Checkpoint (whole team) |
 | --- | --- | --- | --- |
-| Sat 5:30 PM | Supabase project, both migrations pushed, Google provider on | Vite + Tailwind + router skeleton, `supabase.js`, `api.js` stubs, Landing with sign-in | Sign in with Google on localhost |
-| Sat 6:30 PM | `form-squad` stub deployed, `options.js` slugs agreed | Onboarding page saving to `profiles` + `profile_private` | A new user can finish onboarding |
+| Sat 5:30 PM | Supabase project, both migrations pushed, Google provider on | Vite + Tailwind + router skeleton, `backend-tools/` stubs, Landing with sign-in | Sign in with Google on localhost |
+| Sat 6:30 PM | `form-squad` stub deployed, `options.ts` slugs agreed | Onboarding page saving to `profiles` + `profile_private` | A new user can finish onboarding |
 | Sat 8:00 PM (mentors leave) | Seed script run, RLS checks pass, real `form-squad` deployed | FindSquad page calling `formSquad()`, deployed to Vercel | Sign-in works on the **deployed** URL. Ask mentors about anything still broken |
 | Sat 11:00 PM | Fix bugs, `reset-squads.mjs` | Squad page + chat with realtime | Two real accounts chat live in one squad |
 | Sun 8:00 AM | Feature freeze | Feature freeze, accessibility checklist | Full run-through as Jim on the deployed URL |
