@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 
 // kind 'system' = a conversation starter posted by the server: no sender, and meta.answer
 // holds a riddle's answer. Clients can only ever send 'user' messages.
+// reply_to = id of the message this one replies to (always in the same squad), or null.
 export type Message = {
   id: number;
   squad_id: string;
@@ -10,13 +11,14 @@ export type Message = {
   meta: { answer?: string } | null;
   body: string;
   created_at: string;
+  reply_to: number | null;
 };
 
 // Fetches the last 200 messages for a squad, oldest first.
 export async function listMessages(squadId: string): Promise<Message[]> {
   const { data, error } = await supabase
     .from('messages')
-    .select('id, squad_id, sender_id, kind, meta, body, created_at')
+    .select('id, squad_id, sender_id, kind, meta, body, created_at, reply_to')
     .eq('squad_id', squadId)
     .order('created_at', { ascending: true })
     .limit(200);
@@ -26,7 +28,12 @@ export async function listMessages(squadId: string): Promise<Message[]> {
 }
 
 // Inserts a message. sender_id is set by the database default (auth.uid()).
-export async function sendMessage(squadId: string, body: string): Promise<void> {
+// replyTo (optional) makes it a reply; the database rejects one from another squad.
+export async function sendMessage(
+  squadId: string,
+  body: string,
+  replyTo?: number | null,
+): Promise<void> {
   const trimmed = body.trim();
 
   if (trimmed.length === 0 || trimmed.length > 2000) {
@@ -35,9 +42,12 @@ export async function sendMessage(squadId: string, body: string): Promise<void> 
     throw err;
   }
 
-  const { error } = await supabase
-    .from('messages')
-    .insert({ squad_id: squadId, body: trimmed });
+  // Only include reply_to when replying, so plain messages insert exactly as before.
+  const row: { squad_id: string; body: string; reply_to?: number } =
+    { squad_id: squadId, body: trimmed };
+  if (replyTo != null) row.reply_to = replyTo;
+
+  const { error } = await supabase.from('messages').insert(row);
 
   if (error) throw error;
 }

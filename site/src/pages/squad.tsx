@@ -89,9 +89,9 @@ function ChatRooms({ myId }: { myId: string }) {
           there's likely someone here with a similar or the same hobby as you. say hi!
         </OneTimeBanner>
 
-        <div className="h-[60vh] overflow-y-auto scrollbar-none">
+        <div className="relative h-[60vh] overflow-y-auto scrollbar-none">
           {/* key: a fresh chat (history + subscription) for each squad */}
-          <ChatPanel key={open.squad_id} squadId={open.squad_id} myId={myId} members={open.members} />
+          <ChatPanel key={open.squad_id} squadId={open.squad_id} myId={myId} members={open.members} game={squadName(open)} />
         </div>
       </section>
     </div>

@@ -604,11 +604,13 @@ Chat is a plain `messages` table plus a Supabase Realtime subscription, so there
 ```js
 const { data, error } = await supabase
   .from('messages')
-  .select('id, squad_id, sender_id, kind, meta, body, created_at')
+  .select('id, squad_id, sender_id, kind, meta, body, created_at, reply_to')
   .eq('squad_id', squadId)
   .order('created_at', { ascending: true })
   .limit(200)
 ```
+
+`reply_to` (nullable `bigint`, added by `supabase/migrations/20261107000009_replies.sql`) is the id of the message being replied to. A composite foreign key `(reply_to, squad_id) → messages (id, squad_id)` (with `unique (id, squad_id)` on `messages`) means the original must be in the same squad. Default `NO ACTION` on delete: v1 has no message deletes, and a squad's messages are all deleted in one cascade. RLS and grants don't change. Starters never set it. The migration must be applied before the frontend that selects `reply_to` goes live, or history fails to load.
 
 **Subscribe to new messages:**
 
@@ -631,7 +633,10 @@ supabase.removeChannel(channel)
 ```js
 await supabase.from('messages').insert({ squad_id: squadId, body: text.trim() })
 // sender_id defaults to auth.uid() in the database
+// a reply adds reply_to: originalId
 ```
+
+In backend-tools this is `sendMessage(squadId, body, replyTo?)`: `reply_to` is only included when `replyTo` is given, so existing callers are unchanged.
 
 Rules for the frontend:
 
@@ -642,6 +647,9 @@ Rules for the frontend:
 - Show messages in a `role="log"` region with `aria-live="polite"` so screen readers announce new ones.
 - Messages with `kind = 'system'` are conversation starters: show them as a centered card labelled "Cafe" (the app's voice; the database still says `kind = 'system'`), with no avatar and no member lookup (`sender_id` is null). If `meta.answer` is set (a riddle), put it in `<details><summary>Reveal answer</summary>…</details>`, which is keyboard-usable as is.
 - System messages count as unread like any message from someone else.
+- **Replies.** Every member message (yours too) has a "reply" button beside its bubble: shown on hover or keyboard focus, always shown on touch screens (`hover: none`). Its `aria-label` is "reply to <name>" ("reply to your message" for yours). Riddle cards (`meta.answer` set) have an "answer this" button outside "Reveal answer" that does the same, with no prefilled text; other Cafe cards can't be replied to. While replying, a bar above the textarea shows the original's sender ("Cafe" for a riddle), its first line, and "×" (`aria-label="cancel reply"`); Escape also cancels. The reply is cleared only when the send succeeds.
+- A reply shows a quote of the original inside its bubble: sender name, text clamped to 2 lines, and a visually hidden "reply to <name>:" prefix for screen readers. The original is looked up in the loaded messages by `reply_to`. If it's there, the quote is a button that scrolls to it (centered, smooth unless the user prefers reduced motion) and rings it in pink for 1.5 s; each message row has `id="msg-<id>"`. If it isn't loaded, the quote says "an earlier message" and isn't clickable.
+- A reply to a riddle gets a small "✦ riddle answer" pill and a thin cream ring on its bubble, nothing louder. Answers are never checked or revealed automatically. No reactions, edits, deletes or threads in v1.
 
 Seeded users don't reply in v1. The demo uses two real accounts in the same squad.
 
