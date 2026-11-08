@@ -92,6 +92,7 @@ One backend person owns the Supabase project and the Google OAuth client, and sh
    ```
    then `npx supabase secrets set MATCHER_SECRET=<random secret>`.
 5. Deploy the functions: `npx supabase functions deploy join-queue`, `npx supabase functions deploy generate-starter`, `npx supabase functions deploy run-matcher --no-verify-jwt` and `npx supabase functions deploy post-starters --no-verify-jwt`. `run-matcher` and `post-starters` are called by `pg_cron`, not by users, so they check the `x-matcher-secret` header (the same `MATCHER_SECRET`) instead of a user token.
+   Shortcut from the repo root: `npm run deploy:functions` deploys all four at once, taking each one's `verify_jwt` from `supabase/config.toml`. `npm run deploy:db` is `db push --linked`, and `npm run deploy` does both. Any new cron-called function needs its own `[functions.<name>] verify_jwt = false` block there.
 6. Give the starter functions a Groq key (free at console.groq.com, never commit it): `npx supabase secrets set GROQ_API_KEY=<key>`. Without it, starters still post, from the hand-written bank.
 
 **Google sign-in**
@@ -111,7 +112,7 @@ One backend person owns the Supabase project and the Google OAuth client, and sh
 | `SUPABASE_URL` | Your shell, only when running scripts | `scripts/seed.mjs`, `scripts/reset-squads.mjs` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Your shell, only when running scripts | Scripts. Never in `site/src/`, never committed |
 
-Edge Functions get `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` automatically, so nothing needs setting there apart from `MATCHER_SECRET` and `GROQ_API_KEY` (`SUPABASE_ANON_KEY` there is Supabase's own name; the frontend uses the publishable key). Commit `site/.env.example` with empty values, and add `.env.local` to `.gitignore`. Run the scripts from the repo root after `npm install`: `npm run seed`, `npm run reset-squads`.
+Edge Functions get `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` automatically, so nothing needs setting there apart from `MATCHER_SECRET` and `GROQ_API_KEY` (`SUPABASE_ANON_KEY` there is Supabase's own name; the frontend uses the publishable key). Commit `site/.env.example` with empty values, and add `.env.local` to `.gitignore`. Run the scripts from the repo root after `npm install`: `npm run seed`, `npm run reset-squads`, `npm run test:starters`, and the deploy scripts above.
 
 **Deploy**
 

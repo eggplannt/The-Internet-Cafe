@@ -5,7 +5,11 @@
   "description": "Backend scripts (seed, reset). The frontend has its own package.json in site/.",
   "scripts": {
     "seed": "node scripts/seed.mjs",
-    "reset-squads": "node scripts/reset-squads.mjs"
+    "reset-squads": "node scripts/reset-squads.mjs",
+    "deploy:functions": "npx supabase functions deploy",
+    "deploy:db": "npx supabase db push --linked",
+    "deploy": "npm run deploy:db && npm run deploy:functions",
+    "test:starters": "deno test --no-config supabase/functions/_shared/starters_test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0"
