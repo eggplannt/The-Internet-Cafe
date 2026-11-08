@@ -587,7 +587,7 @@ The frontend is five routes, and every page talks to Supabase only through `site
 | --- | --- | --- | --- |
 | `/` | `Landing.tsx` | Public. Signed-in users are redirected by `nextRoute()` | Pitch line + "Continue with Google" |
 | `/onboarding` | `Onboarding.tsx` | Session, no profile | The onboarding form |
-| `/find` | `FindSquad.tsx` | Profile, not in a squad or the queue | "Find my squad" button calling `joinQueue()`, loading state. On `matched` go to `/squad`, on `waiting` go to `/waiting` |
+| `/find` | `FindSquad.tsx` | Profile, not in a squad or the queue | Usually skipped: right after sign-in, `useAutoJoinQueue()` calls `joinQueue()` for any onboarded user who isn't in a squad or the queue. Keep a "Find my squad" button here as a fallback (e.g. after "Leave queue"). On `matched` go to `/squad`, on `waiting` go to `/waiting` |
 | `/waiting` | `Waiting.tsx` | In the queue | "Looking for your squad…", how long you've waited, and a "Leave queue" button (`leaveQueue()`, then `/find`). Calls `joinQueue()` on open, and listens with `subscribeToMatch()` to move to `/squad` the moment a squad forms |
 | `/squad` | `Squad.tsx` | In a squad | Member cards (name + avatar only), the shared game(s), and the chat |
 | `*` | — | — | Redirect to `/` |
@@ -630,6 +630,7 @@ Implementation notes:
 | `useProfile()` | `{ profile, loading, reload }` |
 | `useSquad()` | `{ squad, loading, reload }` |
 | `useChat(squadId)` | `{ messages, send, loading }`: loads history, subscribes, unsubscribes on unmount |
+| `useAutoJoinQueue()` | `{ status: 'loading' \| 'signed_out' \| 'needs_onboarding' \| 'waiting' \| 'matched' \| 'error', ... }`: on sign-in, joins the queue automatically if the user is onboarded and unmatched, then listens for the match |
 
 **Accessibility** (also for the Clio prize)
 
