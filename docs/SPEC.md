@@ -125,6 +125,7 @@ internet-cafe/
     migrations/
       20261107000001_schema.sql  # tables
       20261107000002_rls.sql     # row-level security + helper functions
+      20261107000003_grants.sql  # table privileges (least needed per role)
     functions/
       _shared/cors.ts
       _shared/matching.ts        # pure scoring + squad building, no database calls
@@ -320,6 +321,8 @@ create policy messages_select on public.messages for select to authenticated
 create policy messages_insert on public.messages for insert to authenticated
   with check (sender_id = auth.uid() and public.is_squad_member(squad_id));
 ```
+
+**Table grants** (`supabase/migrations/20261107000003_grants.sql`). RLS decides which rows a role sees, but a role also needs a table privilege to touch the table at all, and new Supabase projects don't grant these automatically. `anon` gets nothing, because every feature needs a sign-in. `authenticated` gets only what the policies allow: `select, insert, update` on `profiles` and `profile_private`, `select` on `squads` and `squad_members`, and `select, insert` on `messages` (Realtime needs `select`). `match_meta` has no client grant at all, so it stays hidden even if RLS were turned off. `service_role` gets everything. Only `authenticated` can execute the two helper functions.
 
 Realtime `postgres_changes` applies the `messages_select` policy, so people only receive messages from their own squad.
 

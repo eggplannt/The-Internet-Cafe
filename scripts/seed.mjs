@@ -18,6 +18,7 @@ const seeds = JSON.parse(readFileSync(join(__dir, 'seed-data.json'), 'utf8'));
 
 let created = 0;
 let skipped = 0;
+let failed = 0;
 
 for (let i = 0; i < seeds.length; i++) {
   const seed = seeds[i];
@@ -31,30 +32,43 @@ for (let i = 0; i < seeds.length; i++) {
   });
 
   if (error) {
-    if (error.message?.includes('already been registered')) {
+    if (error.code === 'email_exists') {
       console.log(`skip  ${email}`);
       skipped++;
       continue;
     }
     console.error(`error ${email}:`, error.message);
+    failed++;
     continue;
   }
 
-  await admin.from('profiles').insert({
+  const { error: profileErr } = await admin.from('profiles').insert({
     id: user.id,
     display_name: seed.display_name,
     age: seed.age,
     is_seed: true,
   });
 
-  await admin.from('profile_private').insert({
-    user_id: user.id,
-    games: seed.games,
-    hobbies: seed.hobbies,
-  });
+  const { error: privateErr } = profileErr
+    ? { error: null }
+    : await admin.from('profile_private').insert({
+        user_id: user.id,
+        games: seed.games,
+        hobbies: seed.hobbies,
+      });
+
+  // If either insert failed, delete the auth user so a re-run creates this seed from scratch
+  // instead of skipping it and leaving a user with no profile.
+  if (profileErr || privateErr) {
+    console.error(`error ${email}:`, (profileErr ?? privateErr).message);
+    await admin.auth.admin.deleteUser(user.id); // cascades to profiles
+    failed++;
+    continue;
+  }
 
   console.log(`added ${email} — ${seed.display_name}`);
   created++;
 }
 
-console.log(`\nDone. Created: ${created}, Skipped: ${skipped}`);
+console.log(`\nDone. Created: ${created}, Skipped: ${skipped}, Failed: ${failed}`);
+if (failed) process.exit(1);

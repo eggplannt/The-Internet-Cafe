@@ -61,14 +61,21 @@ Deno.serve(async (req) => {
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     // Load pool: everyone with private data who isn't in a squad yet, excluding caller
-    const { data: poolRows } = await admin
+    const { data: poolRows, error: poolErr } = await admin
       .from('profile_private')
       .select('user_id, games, hobbies, profiles!inner(created_at)')
       .neq('user_id', user.id);
+    // A failed read must not look like an empty pool (that would wrongly say not_enough_people)
+    if (poolErr) return json({ error: 'internal' }, 500);
 
-    const inSquad = new Set(
-      (await admin.from('squad_members').select('user_id')).data?.map((r: { user_id: string }) => r.user_id) ?? []
-    );
+    const { data: memberRows, error: memberRowsErr } = await admin.from('squad_members').select('squad_id, user_id');
+    if (memberRowsErr) return json({ error: 'internal' }, 500);
+
+    // On a retry, someone else's squad may have grabbed the caller. If so, that's their squad now.
+    const callerRow = memberRows.find((r: { user_id: string }) => r.user_id === user.id);
+    if (callerRow) return json({ squad_id: callerRow.squad_id, already_in_squad: true });
+
+    const inSquad = new Set(memberRows.map((r: { user_id: string }) => r.user_id));
 
     const pool: Candidate[] = (poolRows ?? [])
       .filter((r: { user_id: string }) => !inSquad.has(r.user_id))
@@ -106,9 +113,14 @@ Deno.serve(async (req) => {
       return json({ error: 'internal' }, 500);
     }
 
-    await admin.from('match_meta').insert(
+    const { error: metaErr } = await admin.from('match_meta').insert(
       picks.map((p) => ({ squad_id: squadId, user_id: p.id, score: p.score, is_wildcard: p.isWildcard }))
     );
+    // Don't leave a squad without its match data. Deleting the squad cascades to its members.
+    if (metaErr) {
+      await admin.from('squads').delete().eq('id', squadId);
+      return json({ error: 'internal' }, 500);
+    }
 
     return json({ squad_id: squadId, already_in_squad: false });
   }
