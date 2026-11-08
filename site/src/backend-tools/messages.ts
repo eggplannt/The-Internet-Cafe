@@ -61,3 +61,24 @@ export function subscribeToMessages(
 
   return () => { supabase.removeChannel(channel); };
 }
+
+export type GenerateStarterResult = { source: 'llm' | 'bank'; fallback_reason: string | null };
+
+// Asks the server to post a conversation starter in this squad now (the generate-starter
+// Edge Function; the browser never calls the LLM). The starter itself arrives through
+// subscribeToMessages like any message. Throws with .code: not_signed_in, not_member,
+// too_soon (one per minute per squad), invalid or internal (the message says what failed).
+export async function generateStarter(squadId: string): Promise<GenerateStarterResult> {
+  const { data, error } = await supabase.functions.invoke('generate-starter', { body: { squad_id: squadId } });
+
+  if (error) {
+    // Same as joinQueue(): the real error code is in the response body
+    const body = await (error as { context?: Response }).context?.json().catch(() => null);
+    const code = body?.error ?? 'internal';
+    const err = new Error(body?.detail ?? code) as Error & { code: string };
+    err.code = code;
+    throw err;
+  }
+
+  return data as GenerateStarterResult;
+}

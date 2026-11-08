@@ -72,7 +72,7 @@ In text, for anyone reading the Markdown export:
 | Hosting | Vercel, deploying from `main` |
 | Auth | Supabase Auth, Google provider |
 | Database | Supabase Postgres with RLS on every table |
-| Server logic | Three Supabase Edge Functions (Deno, TypeScript): `join-queue` (called by the browser), `run-matcher` (called by `pg_cron` every 5 minutes) and `post-starters` (called by `pg_cron` every 30 minutes) |
+| Server logic | Four Supabase Edge Functions (Deno, TypeScript): `join-queue` and `generate-starter` (called by the browser), `run-matcher` (called by `pg_cron` every 5 minutes) and `post-starters` (called by `pg_cron` every 30 minutes) |
 | LLM | `openai/gpt-oss-120b` on Groq's free plan, one `fetch` from Edge Functions only (no SDK). Optional: if it's down or slow, a hand-written bank of starters is used |
 | Realtime | Supabase Realtime `postgres_changes` on `messages` |
 
@@ -84,14 +84,14 @@ One backend person owns the Supabase project and the Google OAuth client, and sh
 
 1. Create the project on supabase.com and invite every teammate to the organization.
 2. In the repo: `npm i -D supabase`, then `npx supabase login`, `npx supabase init`, `npx supabase link --project-ref <ref>`.
-3. Apply migrations: `npx supabase db push`.
+3. Apply migrations: `npx supabase db push --linked`. Without `--linked`, newer CLI versions push to the local stack instead (check with `npx supabase migration list --linked`).
 4. Store the matcher's settings in Vault and as a function secret. Use one random value for both, and never commit it:
    ```sql
    select vault.create_secret('https://<project-ref>.supabase.co', 'project_url');
    select vault.create_secret('<random secret>', 'matcher_secret');
    ```
    then `npx supabase secrets set MATCHER_SECRET=<random secret>`.
-5. Deploy the functions: `npx supabase functions deploy join-queue`, `npx supabase functions deploy run-matcher --no-verify-jwt` and `npx supabase functions deploy post-starters --no-verify-jwt`. `run-matcher` and `post-starters` are called by `pg_cron`, not by users, so they check the `x-matcher-secret` header (the same `MATCHER_SECRET`) instead of a user token.
+5. Deploy the functions: `npx supabase functions deploy join-queue`, `npx supabase functions deploy generate-starter`, `npx supabase functions deploy run-matcher --no-verify-jwt` and `npx supabase functions deploy post-starters --no-verify-jwt`. `run-matcher` and `post-starters` are called by `pg_cron`, not by users, so they check the `x-matcher-secret` header (the same `MATCHER_SECRET`) instead of a user token.
 6. Give the starter functions a Groq key (free at console.groq.com, never commit it): `npx supabase secrets set GROQ_API_KEY=<key>`. Without it, starters still post, from the hand-written bank.
 
 **Google sign-in**
@@ -152,6 +152,7 @@ internet-cafe/
       join-queue/index.ts        # browser endpoint: join the queue, try to match now
       run-matcher/index.ts       # scheduled endpoint: pg_cron runs a pass every 5 minutes
       post-starters/index.ts     # scheduled endpoint: starters for quiet squads every 30 minutes
+      generate-starter/index.ts  # browser endpoint: the chat's "generate starter" button
 
   scripts/                       # BACKEND, run locally with the service-role key
     seed-data.json               # ~40 seeded gamers
@@ -648,6 +649,7 @@ Seeded users don't reply in v1. The demo uses two real accounts in the same squa
 - **Spotlight** (`pickSpotlight`, pure): the member spotlighted least recently in this squad (never = first, ties at random; seeds count), then one of their hobbies this squad hasn't had a starter about, or any of theirs if all are used.
 - **LLM:** `callLLM()` sends `STARTER_SYSTEM_PROMPT` (a named constant in `_shared/starters.ts`) plus `buildPrompt()`'s message: the shared games, `Member 1: …`, `Member 2: …` with hobbies only, the spotlight hobby, and the squad's last 5 starters to avoid. Never names, ages, emails, avatars or ids.
 - **Validation** (`validateStarter`, pure, tested in `starters_test.ts`): JSON with `kind` question or riddle, `text` 1–300 characters, a riddle needs an answer. The text and the answer must not contain the spotlight hobby's slug or label (the label is the slug with spaces, e.g. "rock climbing") or any member's display name (as a whole word). On any failure (missing key, HTTP error, 429, 10 s timeout, bad or rejected reply) a random starter from the hand-written `STARTER_BANK` that this squad hasn't had yet is used instead.
+- **On demand:** the chat has a "generate starter" button. It calls `generateStarter(squadId)`, i.e. `POST /functions/v1/generate-starter` with `{ "squad_id": "<uuid>" }` and the user's token. The function checks you're a member of that squad (403 `not_member`), allows one starter per squad per minute (429 `too_soon`), runs `postStarter` and returns `{ "source": "llm" | "bank", "fallback_reason": null | "<why the bank was used>" }`, or 500 `{ "error": "internal", "detail": "<database error>" }`. The reason and detail never contain a hobby, a name or the LLM's reply. The chat shows the result under the button, which is also how we debug starters.
 - **Record:** the message is inserted with `kind = 'system'`, `sender_id = null` and `meta = {"answer": …}` for riddles, then a `starter_spotlights` row with `source` `'llm'` or `'bank'`. `postStarter` catches and logs every error, so a starter can never break matching.
 
 ## Frontend
@@ -689,6 +691,7 @@ Every function is `async`. It returns plain data, or throws an `Error` with a `.
 | `listMessages(squadId)` | `Message[]` | — |
 | `sendMessage(squadId, body)` | nothing | `invalid` |
 | `subscribeToMessages(squadId, onInsert)` | an `unsubscribe()` function | — |
+| `generateStarter(squadId)` | `{ source: 'llm' \| 'bank', fallback_reason: string \| null }`. The starter itself arrives through `subscribeToMessages` | `not_signed_in`, `not_member`, `too_soon`, `invalid`, `internal` (the error message has the detail) |
 
 `Message` = `{ id: number, squad_id: string, sender_id: string | null, kind: 'user' | 'system', meta: { answer?: string } | null, body: string, created_at: string }`. `sender_id` is null only for `kind = 'system'`.
 
